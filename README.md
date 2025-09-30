@@ -1,10 +1,13 @@
+# -- Archimate Ingester
 8.3 is the current working version.
 
 Opens .archimate files.
-Allows entitie sto be explores
+Allows entities to be explored
 Allows entities and relationships to be added via LLM queries.
+Cleans files
+Saves new Versions.
 
-# ---- Imports ----
+ ---- Imports ----
 import tkinter as tk
 from tkinter import simpledialog
 from tkinter import ttk, filedialog, messagebox
