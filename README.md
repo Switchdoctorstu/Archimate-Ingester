@@ -1,11 +1,11 @@
 # -- Archimate Ingester
 8.3 is the current working version.
 
-Opens .archimate files.
-Allows entities to be explored
-Allows entities and relationships to be added via LLM queries.
-Cleans files
-Saves new Versions.
+* Opens .archimate files.
+* Allows entities to be explored
+* Allows entities and relationships to be added via LLM queries.
+* Cleans files
+* Saves new Versions.
 
  ---- Imports ----
  
