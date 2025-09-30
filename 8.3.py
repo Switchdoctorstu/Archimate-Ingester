@@ -49,7 +49,7 @@ def list_gemini_models():
 # ---- Gemini API Key ----
 # IMPORTANT: Replace "YOUR_API_KEY" with your actual Google AI Studio API key.
 # Keep this key secure and do not commit it to public repositories.
-GEMINI_API_KEY = "AIzaSyAk2QrXCc2xmI5a722NkFF8iN-y1xtZqt4"
+GEMINI_API_KEY = "xxxxxxxxx"
 
 # ---- Namespaces ----
 XSI = "http://www.w3.org/2001/XMLSchema-instance"
@@ -1624,4 +1624,5 @@ User's request: "{prompt}"
 if __name__ == "__main__":
     root = tk.Tk()
     app = ArchiIngestorApp(root)
+
     root.mainloop()
