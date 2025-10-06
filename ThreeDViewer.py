@@ -29,27 +29,39 @@ class SceneNode:
         (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)
     ]
 
-    def __init__(self, viewer, node_id, pos, size, color, label):
+    def __init__(self, viewer, node_id, pos, size, color, label, element_type):
         self.viewer = viewer
         self.id = node_id
         self.pos = pos
         self.size = size
         self.color = color
         self.label = label
+        self.element_type = element_type
         
-        # Pre-render the text texture to avoid doing it every frame
+        # Pre-render the text texture for the element name
         if self.label:
-            self.tex_id, self.tex_width, self.tex_height = self.viewer.make_text_texture(
-                self.label, font_size=18, color=(255, 255, 255), bg=(0, 0, 0, 0)
+            self.name_tex_id, self.name_tex_width, self.name_tex_height = self.viewer.make_text_texture(
+                self.label, font_size=18, color=(255, 255, 255)
             )
         else:
-            self.tex_id = None
+            self.name_tex_id = None
+
+        # Pre-render the text texture for the element type
+        if self.element_type:
+            self.type_tex_id, self.type_tex_width, self.type_tex_height = self.viewer.make_text_texture(
+                f"<{self.element_type}>", font_size=14, color=(200, 200, 200)
+            )
+        else:
+            self.type_tex_id = None
 
     def cleanup(self):
         """Releases the GPU resources (texture) used by this object."""
-        if self.tex_id:
-            glDeleteTextures(1, [self.tex_id])
-            self.tex_id = None
+        if self.name_tex_id:
+            glDeleteTextures(1, [self.name_tex_id])
+            self.name_tex_id = None
+        if self.type_tex_id:
+            glDeleteTextures(1, [self.type_tex_id])
+            self.type_tex_id = None
 
     def render(self, is_hovered=False):
         """Draws the oblong and its label in the scene."""
@@ -80,20 +92,22 @@ class SceneNode:
                 glVertex3fv(vertices[vertex_index])
         glEnd()
 
-        # --- Draw the pre-rendered label ---
-        if self.tex_id:
-            self._render_label(x, y, z)
+        # --- Draw the pre-rendered labels ---
+        if self.name_tex_id:
+            self._render_name_label(x, y, z)
+        if self.type_tex_id:
+            self._render_type_label(x, y, z)
 
-    def _render_label(self, x, y, z):
-        """Renders the pre-created texture onto the oblong."""
+    def _render_name_label(self, x, y, z):
+        """Renders the pre-created texture onto the front/back faces."""
         glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, self.tex_id)
+        glBindTexture(GL_TEXTURE_2D, self.name_tex_id)
         glColor3f(1, 1, 1)
 
         # Calculate quad size to fit text inside the oblong face
         oblong_width, oblong_height = 2 * self.size, 1 * self.size
         margin = 0.1 * self.size
-        tex_aspect = self.tex_width / self.tex_height if self.tex_height > 0 else 1.0
+        tex_aspect = self.name_tex_width / self.name_tex_height if self.name_tex_height > 0 else 1.0
         max_text_width, max_text_height = oblong_width - 2 * margin, oblong_height - 2 * margin
 
         if max_text_width / tex_aspect <= max_text_height:
@@ -104,33 +118,67 @@ class SceneNode:
         left, right = x - quad_width / 2, x + quad_width / 2
         bottom, top = y - quad_height / 2, y + quad_height / 2
         
-        # Front Face
+        # Front Face (CCW winding)
         z_front = z + 0.5 * self.size + 0.01
         glBegin(GL_QUADS)
         glTexCoord2f(0, 0); glVertex3f(left, bottom, z_front)
-        glTexCoord2f(0, 1); glVertex3f(left, top, z_front)
-        glTexCoord2f(1, 1); glVertex3f(right, top, z_front)
         glTexCoord2f(1, 0); glVertex3f(right, bottom, z_front)
+        glTexCoord2f(1, 1); glVertex3f(right, top, z_front)
+        glTexCoord2f(0, 1); glVertex3f(left, top, z_front)
         glEnd()
 
-        # Back Face (readable from behind)
+        # Back Face (readable from behind, CCW winding)
         z_back = z - 0.5 * self.size - 0.01
         glBegin(GL_QUADS)
         # Flipped the horizontal (U) texture coordinates to prevent mirroring
+        glTexCoord2f(1, 0); glVertex3f(left, bottom, z_back)
         glTexCoord2f(0, 0); glVertex3f(right, bottom, z_back)
         glTexCoord2f(0, 1); glVertex3f(right, top, z_back)
         glTexCoord2f(1, 1); glVertex3f(left, top, z_back)
-        glTexCoord2f(1, 0); glVertex3f(left, bottom, z_back)
+        glEnd()
+
+        glDisable(GL_TEXTURE_2D)
+
+    def _render_type_label(self, x, y, z):
+        """Renders the pre-created texture onto the top face."""
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, self.type_tex_id)
+        glColor3f(0.8, 0.8, 0.8) # Dim the type label slightly
+
+        # Calculate quad size to fit text on the top face
+        top_face_width, top_face_depth = 2 * self.size, 1 * self.size
+        margin = 0.1 * self.size
+        tex_aspect = self.type_tex_width / self.type_tex_height if self.type_tex_height > 0 else 1.0
+        max_text_width, max_text_height = top_face_width - 2 * margin, top_face_depth - 2 * margin
+
+        if max_text_width / tex_aspect <= max_text_height:
+            quad_width, quad_height = max_text_width, max_text_width / tex_aspect
+        else:
+            quad_height, quad_width = max_text_height, max_text_height * tex_aspect
+
+        left, right = x - quad_width / 2, x + quad_width / 2
+        front, back = z + quad_height / 2, z - quad_height / 2
+        y_top = y + 0.5 * self.size + 0.01 # Offset to prevent z-fighting
+
+        glBegin(GL_QUADS)
+        # Corrected texture coordinates to make text visible and upright
+        # Vertices are wound CCW when viewed from above (+Y)
+        glTexCoord2f(0, 0); glVertex3f(left, y_top, front)    # Front-left corner gets bottom-left of texture
+        glTexCoord2f(1, 0); glVertex3f(right, y_top, front)   # Front-right corner gets bottom-right of texture
+        glTexCoord2f(1, 1); glVertex3f(right, y_top, back)    # Back-right corner gets top-right of texture
+        glTexCoord2f(0, 1); glVertex3f(left, y_top, back)     # Back-left corner gets top-left of texture
         glEnd()
 
         glDisable(GL_TEXTURE_2D)
 
 class RelationshipTube:
     """Represents a single relationship as a 3D tube."""
-    def __init__(self, start_pos, end_pos, color, radius=0.03, sides=8):
+    def __init__(self, viewer, start_pos, end_pos, color, rel_type, radius=0.03, sides=8):
+        self.viewer = viewer
         self.start_pos = np.array(start_pos)
         self.end_pos = np.array(end_pos)
         self.color = color
+        self.rel_type = rel_type
         self.radius = radius
         self.sides = sides
         self.quadric = gluNewQuadric()
@@ -140,7 +188,8 @@ class RelationshipTube:
         gluDeleteQuadric(self.quadric)
 
     def render(self):
-        """Draws the tube in the scene."""
+        """Draws the tube and its label in the scene."""
+        # --- Draw the Tube ---
         glColor3f(*self.color)
         
         direction = self.end_pos - self.start_pos
@@ -167,6 +216,65 @@ class RelationshipTube:
         
         glPopMatrix()
 
+        # --- Draw the Label ---
+        self._render_label()
+
+    def _render_label(self):
+        """Renders the relationship type aligned with the tube."""
+        tex_info = self.viewer.relationship_label_textures.get(self.rel_type)
+        if not tex_info:
+            return
+        
+        tex_id, tex_width, tex_height = tex_info
+        
+        # --- Quad and Position Calculation ---
+        line_vec = self.end_pos - self.start_pos
+        length = np.linalg.norm(line_vec)
+        if length < 1e-6: return
+        line_forward = line_vec / length
+
+        # Define quad size based on texture aspect ratio, scaled to be readable
+        tex_aspect = tex_width / tex_height if tex_height > 0 else 1.0
+        quad_h = 0.2  # Fixed height for the label quad
+        quad_w = quad_h * tex_aspect
+
+        # --- Determine text orientation ---
+        up_reference = np.array([0.0, 1.0, 0.0])
+        if abs(np.dot(line_forward, up_reference)) > 0.99:
+            up_reference = np.array([1.0, 0.0, 0.0])
+
+        text_up = up_reference - np.dot(up_reference, line_forward) * line_forward
+        norm = np.linalg.norm(text_up)
+        if norm < 1e-6: return
+        text_up /= norm
+
+        # --- Position and calculate corners ---
+        mid_point = (self.start_pos + self.end_pos) / 2.0
+        label_center = mid_point + text_up * (self.radius + 0.05)
+
+        half_w_vec = line_forward * (quad_w / 2)
+        half_h_vec = text_up * (quad_h / 2)
+
+        p1 = label_center - half_w_vec - half_h_vec
+        p2 = label_center + half_w_vec - half_h_vec
+        p3 = label_center + half_w_vec + half_h_vec
+        p4 = label_center - half_w_vec + half_h_vec
+
+        # --- Render Quad with the pre-rendered text texture ---
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, tex_id)
+        glColor3f(1, 1, 1) # Set color to white to show texture as-is
+
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex3fv(p1)
+        glTexCoord2f(1, 0); glVertex3fv(p2)
+        glTexCoord2f(1, 1); glVertex3fv(p3)
+        glTexCoord2f(0, 1); glVertex3fv(p4)
+        glEnd()
+
+        glDisable(GL_TEXTURE_2D)
+
+
 class ThreeDViewer:
     def __init__(self, controller):
         self.controller = controller # The main ArchiIngestorApp instance
@@ -185,11 +293,12 @@ class ThreeDViewer:
             "InfluenceRelationship": (0.8, 0.4, 0.0),       # Brown
         }
         self.DEFAULT_LINK_COLOR = (1.0, 1.0, 1.0)  # White
+        self.relationship_label_textures = {} # Cache for pre-rendered labels
 
     # --- Geometry drawing methods are now part of the SceneNode class ---
     # --- Cube Geometry Definitions (kept for potential future use) ---
     CUBE_VERTICES = [
-        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
         [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
     ]
     CUBE_FACES = [
@@ -252,9 +361,11 @@ class ThreeDViewer:
         if not el: return
         
         name = el.get("name", "Unknown")
+        etype_full = el.get(f"{{{XSI}}}type", "")
+        etype = etype_full.split(":")[-1] if ":" in etype_full else etype_full
         size = max(0.3, 1.0 - depth * 0.25)
-        color = self.get_layer_color(node_id)
-        scene_nodes.append(SceneNode(self, node_id, position, size, color, name))
+        color = self.get_color_for_type(etype)
+        scene_nodes.append(SceneNode(self, node_id, position, size, color, name, etype))
 
         if depth == max_depth: return
 
@@ -273,7 +384,7 @@ class ThreeDViewer:
                 if child_id in visited_nodes:
                     child_pos = visited_nodes[child_id]
                     start, end = (child_pos, position) if direction == 'in' else (position, child_pos)
-                    scene_relationships.append(RelationshipTube(start, end, line_color))
+                    scene_relationships.append(RelationshipTube(self, start, end, line_color, rel_data['type']))
                     continue
 
                 phi = math.acos(1 - 2 * (i + 0.5) / total_children)
@@ -287,7 +398,7 @@ class ThreeDViewer:
                 child_pos = position + np.array([rel_x, rel_y, rel_z])
 
                 start, end = (child_pos, position) if direction == 'in' else (position, child_pos)
-                scene_relationships.append(RelationshipTube(start, end, line_color))
+                scene_relationships.append(RelationshipTube(self, start, end, line_color, rel_data['type']))
                 self._build_recursive_layout(child_id, child_pos, depth + 1, max_depth, visited_nodes, scene_nodes, scene_relationships)
 
         layout_children([r for r in rels if r['direction'] == 'out'], 'out')
@@ -359,7 +470,7 @@ class ThreeDViewer:
 
         pygame.init()
         display = (800, 600)
-        pygame.display.set_mode(display, DOUBLEBUF | OPENGL)
+        pygame.display.set_mode(display, DOUBLEBUF | OPENGL | RESIZABLE)
         pygame.display.set_caption("Staged 3D Preview")
         glEnable(GL_DEPTH_TEST); glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -393,7 +504,7 @@ class ThreeDViewer:
             gluLookAt(eye_x, eye_y, eye_z, 0, 0, 0, 0, 1, 0)
             
             # Create temporary SceneNode objects for rendering this preview
-            temp_nodes = [SceneNode(self, name, pos, 0.8, self.get_color_for_type(data['type']), name) for name, (pos, data) in zip(staged_elements.keys(), zip(element_positions.values(), staged_elements.values()))]
+            temp_nodes = [SceneNode(self, name, pos, 0.8, self.get_color_for_type(data['type']), name, data['type']) for name, (pos, data) in zip(staged_elements.keys(), zip(element_positions.values(), staged_elements.values()))]
             for node in temp_nodes: node.render(is_hovered=False)
             
             glLineWidth(2.0); glBegin(GL_LINES)
@@ -409,7 +520,7 @@ class ThreeDViewer:
         for node in temp_nodes: node.cleanup()
         pygame.quit()
 
-    def show_3d_view(self):
+    def show_3d_view(self, max_depth):
         sel = self.controller.treeview.selection()
         if not sel:
             messagebox.showinfo("3D View", "Select a node in the tree first.")
@@ -423,7 +534,7 @@ class ThreeDViewer:
 
         pygame.init()
         display = (800, 600)
-        pygame.display.set_mode(display, DOUBLEBUF | OPENGL)
+        pygame.display.set_mode(display, DOUBLEBUF | OPENGL | RESIZABLE)
         pygame.display.set_caption("3D View")
 
         glEnable(GL_DEPTH_TEST); glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND)
@@ -441,6 +552,12 @@ class ThreeDViewer:
         last_click_time = 0
         double_click_threshold = 300
 
+        # Pre-render relationship labels for performance
+        for rel_type in self.RELATIONSHIP_COLORS.keys():
+            label_text = rel_type.replace("Relationship", "")
+            tex_id, w, h = self.make_text_texture(label_text, font_size=16, color=(255, 255, 255))
+            self.relationship_label_textures[rel_type] = (tex_id, w, h)
+
         def build_scene(start_node_id):
             """Cleans up old scene and builds a new one."""
             nonlocal scene_nodes, scene_relationships
@@ -448,7 +565,6 @@ class ThreeDViewer:
             for rel in scene_relationships: rel.cleanup()
             scene_nodes, scene_relationships = [], []
             visited_nodes = {}
-            max_depth = self.controller.depth_var.get()
             self._build_recursive_layout(start_node_id, np.array([0.0, 0.0, 0.0]), 0, max_depth, visited_nodes, scene_nodes, scene_relationships)
 
         build_scene(el_id) # Initial scene build
@@ -533,17 +649,22 @@ class ThreeDViewer:
             pygame.display.flip(); pygame.time.wait(10)
         
         # --- Final cleanup of all scene objects ---
+        for tex_id, _, _ in self.relationship_label_textures.values():
+            glDeleteTextures(1, [tex_id])
+        self.relationship_label_textures.clear()
+
         for node in scene_nodes: node.cleanup()
         for rel in scene_relationships: rel.cleanup()
         pygame.quit()
 
-    def make_text_texture(self, text, font_size=24, color=(255, 255, 255), bg=(0, 0, 0, 128)):
-        """Creates an OpenGL texture from a string of text."""
+    def make_text_texture(self, text, font_size=24, color=(255, 255, 255)):
+        """Creates an OpenGL texture from a string of text with a transparent background."""
         try:
             font = pygame.font.Font(None, font_size)
         except Exception:
             font = pygame.font.Font(pygame.font.get_default_font(), font_size)
-        text_surface = font.render(text, True, color, bg)
+        # The render function without a background argument creates a transparent surface
+        text_surface = font.render(text, True, color)
         text_data = pygame.image.tostring(text_surface, "RGBA", True)
         width, height = text_surface.get_width(), text_surface.get_height()
         tex_id = glGenTextures(1)
