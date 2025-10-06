@@ -1,5 +1,5 @@
 # -- Archimate Ingester
-8.3 is the current working version.
+"latest" is the current working version.
 
 * Opens .archimate files.
 * Allows entities to be explored
