@@ -40,6 +40,7 @@ FOLDER_MAP = {
     "Stakeholder": "Motivation",
     "Driver": "Motivation",
     "Goal": "Motivation",
+    "Outcome": "Motivation",
     "Assessment": "Motivation",
     "Principle": "Motivation",
     "Requirement": "Motivation",
@@ -56,11 +57,12 @@ FOLDER_MAP = {
 }
 
 COMMON_TYPES = [
-    "Stakeholder", "Requirement",
+    "Stakeholder", "Requirement", "Goal", "Driver", "Outcome",
     "BusinessActor", "BusinessRole", "BusinessCollaboration", "BusinessInterface", "BusinessProcess", "BusinessFunction", "BusinessService",
-    "ApplicationComponent", "ApplicationService",
-    "Node", "Device", "SystemSoftware",
-    "Goal", "Driver", "WorkPackage", "Deliverable"
+    "ApplicationComponent", "ApplicationService", "ApplicationInterface", "DataObject",
+    "Node", "Device", "SystemSoftware", "TechnologyService",
+    "Capability", "ValueStream",
+    "WorkPackage", "Deliverable"
 ]
 
 RELATIONSHIP_TYPES = set([
@@ -73,6 +75,15 @@ RELATIONSHIP_TYPES = set([
 # Add relationship validation rules
 RELATIONSHIP_RULES = {
     # Strategy elements
+    "Capability": {
+        "allowed_targets": {
+            "RealizationRelationship": ["Goal", "Requirement", "Outcome"],
+            "ServingRelationship": ["BusinessActor", "BusinessRole"],
+            "AggregationRelationship": ["Capability"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    # Motivation elements
     "Requirement": {
         "allowed_targets": {
             "RealizationRelationship": ["ApplicationService", "TechnologyService", "BusinessService", "Capability", "CourseOfAction"],
@@ -84,7 +95,8 @@ RELATIONSHIP_RULES = {
     },
     "Goal": {
         "allowed_targets": {
-            "InfluenceRelationship": ["Goal", "Principle", "Requirement", "Outcome"],
+            "RealizationRelationship": ["Outcome"], # Corrected from InfluenceRelationship
+            "InfluenceRelationship": ["Goal", "Principle", "Requirement"],
             "AggregationRelationship": ["Goal"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["Goal"]
@@ -93,8 +105,8 @@ RELATIONSHIP_RULES = {
     # Business elements
     "BusinessService": {
         "allowed_targets": {
-            "ServingRelationship": ["BusinessActor", "BusinessRole"],
-            "RealizationRelationship": ["ApplicationService", "BusinessProcess", "BusinessFunction"],
+            "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess"],
+            "RealizationRelationship": ["ApplicationService"],
             "AccessRelationship": ["BusinessObject"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["BusinessService"]
@@ -110,9 +122,10 @@ RELATIONSHIP_RULES = {
             "SpecializationRelationship": ["BusinessProcess"]
         }
     },
-    # Application elements - MORE CONSERVATIVE RULES
+    # Application elements
     "ApplicationComponent": {
         "allowed_targets": {
+            "RealizationRelationship": ["ApplicationService", "ApplicationFunction"], # Added for completeness
             "UsedByRelationship": ["ApplicationComponent"],
             "AccessRelationship": ["DataObject"],
             "FlowRelationship": ["ApplicationComponent"],
@@ -123,7 +136,7 @@ RELATIONSHIP_RULES = {
     },
     "ApplicationService": {
         "allowed_targets": {
-            "ServingRelationship": ["BusinessProcess", "BusinessFunction", "BusinessService"],
+            "ServingRelationship": ["BusinessProcess", "BusinessFunction", "BusinessService", "ApplicationComponent"],
             "RealizationRelationship": ["ApplicationComponent"],
             "AccessRelationship": ["DataObject"],
             "AssociationRelationship": ["*"],
@@ -132,7 +145,7 @@ RELATIONSHIP_RULES = {
     },
     "ApplicationInterface": {
         "allowed_targets": {
-            "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess"],
+            "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess", "ApplicationComponent"],
             "CompositionRelationship": ["ApplicationComponent"],
             "AssignmentRelationship": ["ApplicationService"],
             "AssociationRelationship": ["*"],
@@ -140,9 +153,16 @@ RELATIONSHIP_RULES = {
         }
     },
     # Technology elements
+    "Node": {
+        "allowed_targets": {
+            "RealizationRelationship": ["TechnologyService"],
+            "AssignmentRelationship": ["SystemSoftware", "Artifact"],
+            "AssociationRelationship": ["*"]
+        }
+    },
     "TechnologyService": {
         "allowed_targets": {
-            "ServingRelationship": ["ApplicationComponent", "ApplicationService"],
+            "ServingRelationship": ["ApplicationComponent", "ApplicationService", "Node", "Device"],
             "RealizationRelationship": ["Node", "Device", "SystemSoftware"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["TechnologyService"]
