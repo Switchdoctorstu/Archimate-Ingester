@@ -1,4 +1,4 @@
-# ArchiMate ingestor By Stuart Oldfield
+# ArchiMate ingester By Stuart Oldfield
 VERSIONTEXT=" Version: 10.1 3d"
 # - Load .archimate XML
 # - Quick-add elements (type/name/description) -> appends to Paste Area
