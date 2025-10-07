@@ -1,4 +1,4 @@
-# ArchiMate ingester By Stuart Oldfield
+# ArchiMate ingestor By Stuart Oldfield
 VERSIONTEXT=" Version: 10.1 3d"
 # - Load .archimate XML
 # - Quick-add elements (type/name/description) -> appends to Paste Area
@@ -212,14 +212,18 @@ class ArchiIngestorApp:
         self.gemini_prompt_text = tk.Text(gemini_frame, height=4, wrap="word")
         self.gemini_prompt_text.pack(fill="x", expand=True, padx=4, pady=(4,0))
         self.gemini_prompt_text.insert("1.0", "As a Planning Officer, what are the key technologies that will affect my role over the next 5 years and how can i best take advantage of them?")
+        
         gemini_button_frame = tk.Frame(gemini_frame)
-        gemini_button_frame.pack(fill="x")
-        tk.Button(gemini_button_frame, text="Resend inventory", command=self.resend_inventory).pack(side="left", padx=4)
-        tk.Checkbutton(gemini_button_frame, text="Delta mode", variable=tk.BooleanVar(value=False),
-               command=lambda: setattr(self, "gemini_delta_mode", not getattr(self, "gemini_delta_mode", False))).pack(side="left", padx=4)
+        gemini_button_frame.pack(fill="x", pady=4)
+
+        tk.Label(gemini_button_frame, text="Context Strategy:").pack(side="left", padx=(4, 2))
+        self.gemini_context_strategy_var = tk.StringVar(value="None (Stateless)")
+        context_options = ["None (Stateless)", "Auto-Detect", "Full Model"]
+        context_combo = ttk.Combobox(gemini_button_frame, textvariable=self.gemini_context_strategy_var, values=context_options, state="readonly", width=15)
+        context_combo.pack(side="left", padx=2)
 
         self.gemini_generate_button = tk.Button(gemini_button_frame, text="Generate!", command=self.handle_ask_gemini)
-        self.gemini_generate_button.pack(side="right", padx=4, pady=4)
+        self.gemini_generate_button.pack(side="right", padx=4, pady=0)
 
         paste_frame = tk.LabelFrame(right_frame, text="Paste Area (text-based staging)")
         paste_frame.pack(fill="both", expand=True, padx=4, pady=4)
@@ -508,10 +512,49 @@ class ArchiIngestorApp:
             self._last_snapshot = (set(inv), set(triples))
         return "\n\n".join(context)
 
-    def resend_inventory(self):
-        """Forces resending full inventory on next Gemini call."""
-        self.gemini_context_sent = False
-        messagebox.showinfo("Gemini", "Inventory will be resent on the next request.")
+    def _build_auto_context(self, prompt):
+        """Builds a targeted context by finding elements mentioned in the prompt."""
+        prompt_lower = prompt.lower()
+        mentioned_ids = set()
+        
+        # Find all elements whose names appear in the prompt
+        for name_lower, elements in self.element_db.items():
+            if name_lower in prompt_lower:
+                for el_id, _ in elements:
+                    mentioned_ids.add(el_id)
+        
+        if not mentioned_ids:
+            return "# No relevant context detected in the model."
+
+        # Build the context from the found elements and their direct relationships
+        entities = set()
+        relationships = set()
+        
+        for el_id in mentioned_ids:
+            el_data = self.element_db_by_id.get(el_id)
+            if not el_data: continue
+            
+            el_type_short = el_data['type'].split(':')[-1]
+            entities.add(f"{el_type_short} | {el_data['name']}")
+            
+            # Add all relationships connected to this element
+            for rel in self.get_element_relationships(el_id):
+                source_data = self.element_db_by_id.get(el_id)
+                target_data = self.element_db_by_id.get(rel['id'])
+                if not source_data or not target_data: continue
+
+                if rel['direction'] == 'out':
+                    relationships.add(f"{source_data['name']} -> {rel['type']} -> {target_data['name']}")
+                else: # 'in'
+                    relationships.add(f"{target_data['name']} -> {rel['type']} -> {source_data['name']}")
+
+        context = ["# Auto-Detected Model Context"]
+        if entities:
+            context.append("Entities:\n" + "\n".join(sorted(list(entities))))
+        if relationships:
+            context.append("Relationships:\n" + "\n".join(sorted(list(relationships))))
+            
+        return "\n\n".join(context)
 
 
     def _send_to_gemini(self, prompt):
@@ -533,15 +576,16 @@ class ArchiIngestorApp:
             all_element_types = sorted(list(FOLDER_MAP.keys()))
             all_relationship_types = sorted(list(RELATIONSHIP_TYPES))
 
-            # --- Build Context ---
-            if not hasattr(self, "gemini_context_sent"): self.gemini_context_sent = False
-            if not hasattr(self, "gemini_delta_mode"): self.gemini_delta_mode = False
+            # --- Build Context based on selected strategy ---
+            strategy = self.gemini_context_strategy_var.get()
             context = ""
-            if not self.gemini_context_sent:
-                context = self.build_gemini_context(delta_only=False)
-                self.gemini_context_sent = True
-            elif self.gemini_delta_mode:
-                context = self.build_gemini_context(delta_only=True)
+            if strategy == "Full Model":
+                context = self.build_gemini_context()
+            elif strategy == "Auto-Detect":
+                context = self._build_auto_context(prompt)
+            else: # "None (Stateless)"
+                context = "# No model context was provided."
+
 
             # --- New, Re-structured System Prompt ---
             system_prompt = f"""
