@@ -841,6 +841,7 @@ Analyze the user's request and the provided model context. Design a concise and 
                 return True
         return False
 
+
     def _evaluate_autocomplete_conditions(self, conditions, source_data, target_data):
         """Evaluates if the conditions for an autocomplete rule are met."""
         for condition in conditions:
@@ -849,12 +850,35 @@ Analyze the user's request and the provided model context. Design a concise and 
                 # Check for direct relationship
                 for rel in self.get_element_relationships(source_data['id']):
                     if rel['id'] == target_data['id'] and rel['type'] in rel_types_to_check:
-                        return False # Found a disallowed relationship, condition fails
+                        return False  # Found a disallowed relationship, condition fails
                 # Check for reverse relationship
                 for rel in self.get_element_relationships(target_data['id']):
                     if rel['id'] == source_data['id'] and rel['type'] in rel_types_to_check:
-                        return False # Found a disallowed relationship, condition fails
-        return True # All conditions passed
+                        return False  # Found a disallowed relationship, condition fails
+            
+            elif condition['type'] == 'name_similarity':
+                # Simple name similarity check (you can implement more sophisticated logic)
+                source_name = source_data['name'].lower()
+                target_name = target_data['name'].lower()
+                threshold = condition.get('threshold', 0.5)
+                
+                # Simple word overlap check
+                source_words = set(source_name.split())
+                target_words = set(target_name.split())
+                overlap = len(source_words & target_words) / max(len(source_words), len(target_words))
+                if overlap < threshold:
+                    return False           
+            elif condition['type'] == 'target_name_is_part_of_source':
+                source_name = source_data['name'].lower()
+                target_name = target_data['name'].lower()
+                threshold = condition.get('threshold', 0.8)
+                
+                # Check if target name appears within source name
+                if target_name not in source_name:
+                    return False
+        
+        return True  # All conditions passed
+
 
     # Add a more conservative validation function
     def validate_relationships_conservative(self):
