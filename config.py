@@ -73,90 +73,331 @@ RELATIONSHIP_TYPES = set([
 ])
 
 # Add relationship validation rules
+# Add relationship validation rules
 RELATIONSHIP_RULES = {
     # Strategy elements
     "Capability": {
         "allowed_targets": {
-            "RealizationRelationship": ["Goal", "Requirement", "Outcome"],
+            "RealizationRelationship": ["Goal", "Requirement", "Outcome", "CourseOfAction"],
             "ServingRelationship": ["BusinessActor", "BusinessRole"],
+            "CompositionRelationship": ["Capability"],
             "AggregationRelationship": ["Capability"],
+            "InfluenceRelationship": ["Goal", "Principle", "Requirement"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "CourseOfAction": {
+        "allowed_targets": {
+            "RealizationRelationship": ["Capability", "Goal"],
+            "ServingRelationship": ["BusinessActor", "BusinessRole"],
+            "CompositionRelationship": ["CourseOfAction"],
+            "AggregationRelationship": ["CourseOfAction"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "ValueStream": {
+        "allowed_targets": {
+            "CompositionRelationship": ["ValueStream"],
+            "AggregationRelationship": ["ValueStream"],
+            "RealizationRelationship": ["BusinessProcess", "BusinessFunction"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Resource": {
+        "allowed_targets": {
+            "RealizationRelationship": ["BusinessObject", "DataObject", "Artifact"],
+            "CompositionRelationship": ["Resource"],
+            "AggregationRelationship": ["Resource"],
             "AssociationRelationship": ["*"]
         }
     },
     # Motivation elements
-    "Requirement": {
+    "Stakeholder": {
         "allowed_targets": {
-            "RealizationRelationship": ["ApplicationService", "TechnologyService", "BusinessService", "Capability", "CourseOfAction"],
-            "InfluenceRelationship": ["Goal", "Principle", "Requirement"],
-            "AggregationRelationship": ["Requirement"],
-            "AssociationRelationship": ["*"],
-            "SpecializationRelationship": ["Requirement"]
+            "InfluenceRelationship": ["Goal", "Driver", "Requirement"],
+            "AssignmentRelationship": ["BusinessActor", "BusinessRole"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Driver": {
+        "allowed_targets": {
+            "InfluenceRelationship": ["Goal", "Assessment", "Requirement"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Assessment": {
+        "allowed_targets": {
+            "InfluenceRelationship": ["Driver", "Goal"],
+            "AssociationRelationship": ["*"]
         }
     },
     "Goal": {
         "allowed_targets": {
-            "RealizationRelationship": ["Outcome"], # Corrected from InfluenceRelationship
+            "RealizationRelationship": ["Outcome", "Capability"],
             "InfluenceRelationship": ["Goal", "Principle", "Requirement"],
+            "CompositionRelationship": ["Goal"],
             "AggregationRelationship": ["Goal"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["Goal"]
         }
     },
+    "Outcome": {
+        "allowed_targets": {
+            "RealizationRelationship": ["Capability"],
+            "InfluenceRelationship": ["Goal"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Principle": {
+        "allowed_targets": {
+            "InfluenceRelationship": ["Goal", "Requirement", "Constraint"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Requirement": {
+        "allowed_targets": {
+            "RealizationRelationship": ["ApplicationService", "TechnologyService", "BusinessService", "Capability", "CourseOfAction"],
+            "InfluenceRelationship": ["Goal", "Principle", "Requirement"],
+            "CompositionRelationship": ["Requirement"],
+            "AggregationRelationship": ["Requirement"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["Requirement"]
+        }
+    },
+    "Constraint": {
+        "allowed_targets": {
+            "InfluenceRelationship": ["Goal", "Requirement", "Principle"],
+            "AssociationRelationship": ["*"]
+        }
+    },
     # Business elements
-    "BusinessService": {
+    "BusinessActor": {
+        "allowed_targets": {
+            "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess", "BusinessFunction"],
+            "UsedByRelationship": ["BusinessProcess", "BusinessFunction"],
+            "CompositionRelationship": ["BusinessActor", "BusinessRole"],
+            "AggregationRelationship": ["BusinessActor", "BusinessRole"],
+            "AssignmentRelationship": ["BusinessRole"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["BusinessActor"]
+        }
+    },
+    "BusinessRole": {
+        "allowed_targets": {
+            "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess", "BusinessFunction"],
+            "UsedByRelationship": ["BusinessProcess", "BusinessFunction"],
+            "CompositionRelationship": ["BusinessRole"],
+            "AggregationRelationship": ["BusinessRole"],
+            "AssignmentRelationship": ["BusinessActor"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["BusinessRole"]
+        }
+    },
+    "BusinessCollaboration": {
+        "allowed_targets": {
+            "ServingRelationship": ["BusinessProcess", "BusinessFunction"],
+            "CompositionRelationship": ["BusinessActor", "BusinessRole"],
+            "AggregationRelationship": ["BusinessActor", "BusinessRole"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "BusinessInterface": {
         "allowed_targets": {
             "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess"],
-            "RealizationRelationship": ["ApplicationService"],
-            "AccessRelationship": ["BusinessObject"],
-            "AssociationRelationship": ["*"],
-            "SpecializationRelationship": ["BusinessService"]
+            "AssignmentRelationship": ["BusinessService"],
+            "CompositionRelationship": ["BusinessActor", "BusinessRole"],
+            "AssociationRelationship": ["*"]
         }
     },
     "BusinessProcess": {
         "allowed_targets": {
             "UsedByRelationship": ["BusinessActor", "BusinessRole"],
+            "ServingRelationship": ["BusinessActor", "BusinessRole"],
             "AccessRelationship": ["BusinessObject"],
             "FlowRelationship": ["BusinessProcess", "BusinessFunction"],
             "TriggeringRelationship": ["BusinessProcess", "BusinessFunction", "BusinessEvent"],
+            "CompositionRelationship": ["BusinessProcess", "BusinessFunction"],
+            "AggregationRelationship": ["BusinessProcess", "BusinessFunction"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["BusinessProcess"]
+        }
+    },
+    "BusinessFunction": {
+        "allowed_targets": {
+            "UsedByRelationship": ["BusinessActor", "BusinessRole"],
+            "ServingRelationship": ["BusinessActor", "BusinessRole"],
+            "AccessRelationship": ["BusinessObject"],
+            "FlowRelationship": ["BusinessProcess", "BusinessFunction"],
+            "TriggeringRelationship": ["BusinessProcess", "BusinessFunction", "BusinessEvent"],
+            "CompositionRelationship": ["BusinessFunction"],
+            "AggregationRelationship": ["BusinessFunction"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["BusinessFunction"]
+        }
+    },
+    "BusinessInteraction": {
+        "allowed_targets": {
+            "FlowRelationship": ["BusinessProcess", "BusinessFunction", "BusinessInteraction"],
+            "TriggeringRelationship": ["BusinessProcess", "BusinessFunction", "BusinessEvent"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "BusinessEvent": {
+        "allowed_targets": {
+            "TriggeringRelationship": ["BusinessProcess", "BusinessFunction"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "BusinessService": {
+        "allowed_targets": {
+            "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess"],
+            "RealizationRelationship": ["ApplicationService", "BusinessProcess", "BusinessFunction"],
+            "AccessRelationship": ["BusinessObject"],
+            "CompositionRelationship": ["BusinessService"],
+            "AggregationRelationship": ["BusinessService"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["BusinessService"]
+        }
+    },
+    "BusinessObject": {
+        "allowed_targets": {
+            "AccessRelationship": ["BusinessProcess", "BusinessFunction", "BusinessService"],
+            "RealizationRelationship": ["DataObject"],
+            "CompositionRelationship": ["BusinessObject"],
+            "AggregationRelationship": ["BusinessObject"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "BusinessContract": {
+        "allowed_targets": {
+            "AccessRelationship": ["BusinessProcess", "BusinessFunction"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "BusinessRepresentation": {
+        "allowed_targets": {
+            "AccessRelationship": ["BusinessObject"],
+            "AssociationRelationship": ["*"]
         }
     },
     # Application elements
     "ApplicationComponent": {
         "allowed_targets": {
-            "RealizationRelationship": ["ApplicationService", "ApplicationFunction"], # Added for completeness
+            "RealizationRelationship": ["ApplicationService", "ApplicationFunction"],
             "UsedByRelationship": ["ApplicationComponent"],
+            "ServingRelationship": ["ApplicationComponent"],
             "AccessRelationship": ["DataObject"],
             "FlowRelationship": ["ApplicationComponent"],
-            "CompositionRelationship": ["ApplicationComponent", "ApplicationInterface"],
+            "CompositionRelationship": ["ApplicationComponent", "ApplicationInterface", "ApplicationFunction"],
+            "AggregationRelationship": ["ApplicationComponent", "ApplicationInterface", "ApplicationFunction"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["ApplicationComponent"]
         }
     },
-    "ApplicationService": {
+    "ApplicationCollaboration": {
         "allowed_targets": {
-            "ServingRelationship": ["BusinessProcess", "BusinessFunction", "BusinessService", "ApplicationComponent"],
-            "RealizationRelationship": ["ApplicationComponent"],
-            "AccessRelationship": ["DataObject"],
-            "AssociationRelationship": ["*"],
-            "SpecializationRelationship": ["ApplicationService"]
+            "CompositionRelationship": ["ApplicationComponent"],
+            "AggregationRelationship": ["ApplicationComponent"],
+            "AssociationRelationship": ["*"]
         }
     },
     "ApplicationInterface": {
         "allowed_targets": {
             "ServingRelationship": ["BusinessActor", "BusinessRole", "BusinessProcess", "ApplicationComponent"],
-            "CompositionRelationship": ["ApplicationComponent"],
             "AssignmentRelationship": ["ApplicationService"],
+            "CompositionRelationship": ["ApplicationComponent"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["ApplicationInterface"]
         }
     },
-    # Technology elements
+    "ApplicationService": {
+        "allowed_targets": {
+            "ServingRelationship": ["BusinessProcess", "BusinessFunction", "BusinessService", "ApplicationComponent"],
+            "RealizationRelationship": ["ApplicationComponent", "ApplicationFunction"],
+            "AccessRelationship": ["DataObject"],
+            "CompositionRelationship": ["ApplicationService"],
+            "AggregationRelationship": ["ApplicationService"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["ApplicationService"]
+        }
+    },
+    "ApplicationFunction": {
+        "allowed_targets": {
+            "UsedByRelationship": ["ApplicationComponent"],
+            "AccessRelationship": ["DataObject"],
+            "FlowRelationship": ["ApplicationFunction"],
+            "TriggeringRelationship": ["ApplicationFunction", "ApplicationEvent"],
+            "CompositionRelationship": ["ApplicationFunction"],
+            "AggregationRelationship": ["ApplicationFunction"],
+            "AssociationRelationship": ["*"],
+            "SpecializationRelationship": ["ApplicationFunction"]
+        }
+    },
+    "ApplicationProcess": {
+        "allowed_targets": {
+            "AccessRelationship": ["DataObject"],
+            "FlowRelationship": ["ApplicationProcess"],
+            "TriggeringRelationship": ["ApplicationProcess", "ApplicationEvent"],
+            "CompositionRelationship": ["ApplicationProcess"],
+            "AggregationRelationship": ["ApplicationProcess"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "ApplicationInteraction": {
+        "allowed_targets": {
+            "FlowRelationship": ["ApplicationProcess", "ApplicationFunction", "ApplicationInteraction"],
+            "TriggeringRelationship": ["ApplicationProcess", "ApplicationFunction", "ApplicationEvent"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "ApplicationEvent": {
+        "allowed_targets": {
+            "TriggeringRelationship": ["ApplicationProcess", "ApplicationFunction"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "DataObject": {
+        "allowed_targets": {
+            "AccessRelationship": ["ApplicationComponent", "ApplicationFunction", "ApplicationProcess", "ApplicationService"],
+            "RealizationRelationship": ["Artifact"],
+            "CompositionRelationship": ["DataObject"],
+            "AggregationRelationship": ["DataObject"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    # Technology & Physical elements
     "Node": {
         "allowed_targets": {
             "RealizationRelationship": ["TechnologyService"],
+            "AssignmentRelationship": ["SystemSoftware", "Artifact", "Device"],
+            "CompositionRelationship": ["Node", "Device", "SystemSoftware"],
+            "AggregationRelationship": ["Node", "Device", "SystemSoftware"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Device": {
+        "allowed_targets": {
+            "RealizationRelationship": ["TechnologyService"],
             "AssignmentRelationship": ["SystemSoftware", "Artifact"],
+            "CompositionRelationship": ["Device"],
+            "AggregationRelationship": ["Device"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "SystemSoftware": {
+        "allowed_targets": {
+            "RealizationRelationship": ["TechnologyService"],
+            "AssignmentRelationship": ["Node", "Device"],
+            "CompositionRelationship": ["SystemSoftware"],
+            "AggregationRelationship": ["SystemSoftware"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "TechnologyInterface": {
+        "allowed_targets": {
+            "ServingRelationship": ["ApplicationComponent", "Node", "Device"],
+            "AssignmentRelationship": ["TechnologyService"],
+            "CompositionRelationship": ["Node", "Device"],
             "AssociationRelationship": ["*"]
         }
     },
@@ -164,88 +405,293 @@ RELATIONSHIP_RULES = {
         "allowed_targets": {
             "ServingRelationship": ["ApplicationComponent", "ApplicationService", "Node", "Device"],
             "RealizationRelationship": ["Node", "Device", "SystemSoftware"],
+            "CompositionRelationship": ["TechnologyService"],
+            "AggregationRelationship": ["TechnologyService"],
             "AssociationRelationship": ["*"],
             "SpecializationRelationship": ["TechnologyService"]
         }
     },
-    # Default rule for any element type
+    "Artifact": {
+        "allowed_targets": {
+            "AssignmentRelationship": ["Node", "Device"],
+            "RealizationRelationship": ["DataObject"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    # Implementation & Migration elements
+    "WorkPackage": {
+        "allowed_targets": {
+            "RealizationRelationship": ["Deliverable"],
+            "CompositionRelationship": ["WorkPackage"],
+            "AggregationRelationship": ["WorkPackage"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Deliverable": {
+        "allowed_targets": {
+            "RealizationRelationship": ["Artifact", "BusinessObject", "DataObject"],
+            "CompositionRelationship": ["Deliverable"],
+            "AggregationRelationship": ["Deliverable"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    "Plateau": {
+        "allowed_targets": {
+            "CompositionRelationship": ["Plateau"],
+            "AggregationRelationship": ["Plateau"],
+            "AssociationRelationship": ["*"]
+        }
+    },
+    # Default rule for any element type (more restrictive)
     "*": {
         "allowed_targets": {
             "AssociationRelationship": ["*"],
-            "SpecializationRelationship": ["*"]  # Can specialize to same type
+            "SpecializationRelationship": ["*"]  # Can specialize to same type only
         }
     }
 }
 
 AUTOCOMPLETE_RULES = [
+    # --- MOTIVATION to BUSINESS LAYER ---
     {
-        'name': 'Add Application Interface between Business Consumer and external-facing Application Service',
-        'rule_type': 'insert_intermediary',
-        'source_types': ['BusinessActor', 'BusinessRole'],
-        'target_types': ['ApplicationService'],
-        'conditions': {
-            'not_directly_related_by': ['UsedByRelationship', 'ServingRelationship'],
-            'target_name_contains': ['api', 'interface', 'portal', 'gateway', 'endpoint', 'service', 'consumer', 'client', 'user', 'customer', 'public']
-        },
-        'intermediary': {
-            'type': 'ApplicationInterface',
-            'name_template': '{target_name} Interface'
-        },
-        'new_relationships': [
-            {'from': 'intermediary', 'to': 'target', 'type': 'AssignmentRelationship'},
-            {'from': 'intermediary', 'to': 'source', 'type': 'ServingRelationship'}
-        ]
-    },
-    {
-        'name': 'Add Access Relationship from Application Component to related Data Object',
+        'name': 'Connect Goals to Business Capabilities that realize them',
         'rule_type': 'direct_relationship',
-        'source_types': ['ApplicationComponent'],
-        'target_types': ['DataObject'],
-        'conditions': {
-            'not_directly_related_by': ['AccessRelationship'],
-            'strong_name_match': True
-        },
-        'new_relationships': [
-            {'from': 'source', 'to': 'target', 'type': 'AccessRelationship', 'attributes': {'accessType': 'readWrite'}}
-        ]
+        'source_types': ['Capability'],
+        'target_types': ['Goal'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship', 'InfluenceRelationship']}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
     },
     {
-        'name': 'Connect Business Process to supporting Application Service',
+        'name': 'Connect Requirements to Business Services that fulfill them',
+        'rule_type': 'direct_relationship',
+        'source_types': ['BusinessService'],
+        'target_types': ['Requirement'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship']}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+    {
+        'name': 'Connect Drivers to Business Processes they influence',
+        'rule_type': 'direct_relationship',
+        'source_types': ['Driver'],
+        'target_types': ['BusinessProcess'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['InfluenceRelationship']}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'InfluenceRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+
+    # --- BUSINESS to APPLICATION LAYER ---
+    {
+        'name': 'Connect Business Services to Application Services that realize them',
+        'rule_type': 'direct_relationship',
+        'source_types': ['ApplicationService'],
+        'target_types': ['BusinessService'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.6}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+    {
+        'name': 'Connect Business Processes to Application Services that support them',
         'rule_type': 'direct_relationship',
         'source_types': ['ApplicationService'],
         'target_types': ['BusinessProcess'],
-        'conditions': {
-            'not_directly_related_by': ['ServingRelationship', 'RealizationRelationship'],
-            'strong_name_match': True
-        },
-        'new_relationships': [
-            {'from': 'source', 'to': 'target', 'type': 'ServingRelationship'}
-        ]
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['ServingRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.5}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'ServingRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
     },
     {
-        'name': 'Compose Application Component from sub-components',
+        'name': 'Connect Business Objects to Data Objects that implement them',
         'rule_type': 'direct_relationship',
-        'source_types': ['ApplicationComponent'], # The container
-        'target_types': ['ApplicationComponent'], # The part
-        'conditions': {
-            'not_directly_related_by': ['CompositionRelationship', 'AggregationRelationship'],
-            'target_name_is_part_of_source': True
-        },
-        'new_relationships': [
-            {'from': 'source', 'to': 'target', 'type': 'CompositionRelationship'}
-        ]
+        'source_types': ['DataObject'],
+        'target_types': ['BusinessObject'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.7}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
     },
+
+    # --- APPLICATION to TECHNOLOGY LAYER ---
     {
-        'name': 'Assign System Software to a hosting Node',
+        'name': 'Connect Application Components to Nodes that host them',
         'rule_type': 'direct_relationship',
         'source_types': ['Node'],
-        'target_types': ['SystemSoftware'],
-        'conditions': {
-            'not_directly_related_by': ['AssignmentRelationship'],
-            'strong_name_match': True
-        },
-        'new_relationships': [
-            {'from': 'source', 'to': 'target', 'type': 'AssignmentRelationship'}
-        ]
+        'target_types': ['ApplicationComponent'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['AssignmentRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.4}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'AssignmentRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+    {
+        'name': 'Connect Application Services to Technology Services that enable them',
+        'rule_type': 'direct_relationship',
+        'source_types': ['TechnologyService'],
+        'target_types': ['ApplicationService'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['ServingRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.5}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'ServingRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+    {
+        'name': 'Connect Data Objects to Artifacts that store them',
+        'rule_type': 'direct_relationship',
+        'source_types': ['Artifact'],
+        'target_types': ['DataObject'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.6}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+
+    # --- CROSS-LAYER INTERFACE CONNECTIONS ---
+    {
+        'name': 'Add Application Interface between Business Actors and Application Services',
+        'rule_type': 'insert_intermediary',
+        'source_types': ['BusinessActor', 'BusinessRole'],
+        'target_types': ['ApplicationService'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['ServingRelationship', 'UsedByRelationship']},
+            {'type': 'target_name_contains', 'keywords': ['api', 'portal', 'gateway', 'service', 'interface']}
+        ],
+        'action': {
+            'create_element': {
+                'type': 'ApplicationInterface',
+                'name': '{target_name} Interface'
+            },
+            'create_relationships': [
+                {'type': 'AssignmentRelationship', 'source': 'intermediary', 'target': 'target'},
+                {'type': 'ServingRelationship', 'source': 'intermediary', 'target': 'source'}
+            ]
+        }
+    },
+    {
+        'name': 'Add Technology Interface between Application Components and Technology Services',
+        'rule_type': 'insert_intermediary',
+        'source_types': ['ApplicationComponent'],
+        'target_types': ['TechnologyService'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['ServingRelationship']},
+            {'type': 'target_name_contains', 'keywords': ['api', 'service', 'interface', 'gateway']}
+        ],
+        'action': {
+            'create_element': {
+                'type': 'TechnologyInterface',
+                'name': '{target_name} Interface'
+            },
+            'create_relationships': [
+                {'type': 'AssignmentRelationship', 'source': 'intermediary', 'target': 'target'},
+                {'type': 'ServingRelationship', 'source': 'intermediary', 'target': 'source'}
+            ]
+        }
+    },
+
+    # --- VALUE STREAM & CAPABILITY CONNECTIONS ---
+    {
+        'name': 'Connect Capabilities to Value Streams they enable',
+        'rule_type': 'direct_relationship',
+        'source_types': ['Capability'],
+        'target_types': ['ValueStream'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship']}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+    {
+        'name': 'Connect Value Streams to Business Processes that implement them',
+        'rule_type': 'direct_relationship',
+        'source_types': ['BusinessProcess'],
+        'target_types': ['ValueStream'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['RealizationRelationship']},
+            {'type': 'name_similarity', 'threshold': 0.6}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'RealizationRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+
+    # --- COMPOSITION RELATIONSHIPS ---
+    {
+        'name': 'Compose Business Processes from sub-processes',
+        'rule_type': 'direct_relationship',
+        'source_types': ['BusinessProcess'],
+        'target_types': ['BusinessProcess'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['CompositionRelationship', 'AggregationRelationship']},
+            {'type': 'target_name_is_part_of_source', 'threshold': 0.8}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'CompositionRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
+    },
+    {
+        'name': 'Compose Application Components from sub-components',
+        'rule_type': 'direct_relationship',
+        'source_types': ['ApplicationComponent'],
+        'target_types': ['ApplicationComponent'],
+        'conditions': [
+            {'type': 'no_relationship_of_type', 'rel_types': ['CompositionRelationship', 'AggregationRelationship']},
+            {'type': 'target_name_is_part_of_source', 'threshold': 0.8}
+        ],
+        'action': {
+            'create_relationships': [
+                {'type': 'CompositionRelationship', 'source': 'source', 'target': 'target'}
+            ]
+        }
     }
 ]
