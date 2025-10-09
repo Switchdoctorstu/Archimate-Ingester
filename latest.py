@@ -1,5 +1,5 @@
-# ArchiMate ingestor with relationships & diagrams
-VERSIONTEXT=" Version: 8.5 3d"
+# ArchiMate ingestor By Stuart Oldfield
+VERSIONTEXT=" Version: 10.1 3d"
 # - Load .archimate XML
 # - Quick-add elements (type/name/description) -> appends to Paste Area
 # - Paste Area (text list) including relationships -> staged elements & relationships
@@ -212,14 +212,18 @@ class ArchiIngestorApp:
         self.gemini_prompt_text = tk.Text(gemini_frame, height=4, wrap="word")
         self.gemini_prompt_text.pack(fill="x", expand=True, padx=4, pady=(4,0))
         self.gemini_prompt_text.insert("1.0", "As a Planning Officer, what are the key technologies that will affect my role over the next 5 years and how can i best take advantage of them?")
+        
         gemini_button_frame = tk.Frame(gemini_frame)
-        gemini_button_frame.pack(fill="x")
-        tk.Button(gemini_button_frame, text="Resend inventory", command=self.resend_inventory).pack(side="left", padx=4)
-        tk.Checkbutton(gemini_button_frame, text="Delta mode", variable=tk.BooleanVar(value=False),
-               command=lambda: setattr(self, "gemini_delta_mode", not getattr(self, "gemini_delta_mode", False))).pack(side="left", padx=4)
+        gemini_button_frame.pack(fill="x", pady=4)
+
+        tk.Label(gemini_button_frame, text="Context Strategy:").pack(side="left", padx=(4, 2))
+        self.gemini_context_strategy_var = tk.StringVar(value="None (Stateless)")
+        context_options = ["None (Stateless)", "Auto-Detect", "Full Model"]
+        context_combo = ttk.Combobox(gemini_button_frame, textvariable=self.gemini_context_strategy_var, values=context_options, state="readonly", width=15)
+        context_combo.pack(side="left", padx=2)
 
         self.gemini_generate_button = tk.Button(gemini_button_frame, text="Generate!", command=self.handle_ask_gemini)
-        self.gemini_generate_button.pack(side="right", padx=4, pady=4)
+        self.gemini_generate_button.pack(side="right", padx=4, pady=0)
 
         paste_frame = tk.LabelFrame(right_frame, text="Paste Area (text-based staging)")
         paste_frame.pack(fill="both", expand=True, padx=4, pady=4)
@@ -508,10 +512,49 @@ class ArchiIngestorApp:
             self._last_snapshot = (set(inv), set(triples))
         return "\n\n".join(context)
 
-    def resend_inventory(self):
-        """Forces resending full inventory on next Gemini call."""
-        self.gemini_context_sent = False
-        messagebox.showinfo("Gemini", "Inventory will be resent on the next request.")
+    def _build_auto_context(self, prompt):
+        """Builds a targeted context by finding elements mentioned in the prompt."""
+        prompt_lower = prompt.lower()
+        mentioned_ids = set()
+        
+        # Find all elements whose names appear in the prompt
+        for name_lower, elements in self.element_db.items():
+            if name_lower in prompt_lower:
+                for el_id, _ in elements:
+                    mentioned_ids.add(el_id)
+        
+        if not mentioned_ids:
+            return "# No relevant context detected in the model."
+
+        # Build the context from the found elements and their direct relationships
+        entities = set()
+        relationships = set()
+        
+        for el_id in mentioned_ids:
+            el_data = self.element_db_by_id.get(el_id)
+            if not el_data: continue
+            
+            el_type_short = el_data['type'].split(':')[-1]
+            entities.add(f"{el_type_short} | {el_data['name']}")
+            
+            # Add all relationships connected to this element
+            for rel in self.get_element_relationships(el_id):
+                source_data = self.element_db_by_id.get(el_id)
+                target_data = self.element_db_by_id.get(rel['id'])
+                if not source_data or not target_data: continue
+
+                if rel['direction'] == 'out':
+                    relationships.add(f"{source_data['name']} -> {rel['type']} -> {target_data['name']}")
+                else: # 'in'
+                    relationships.add(f"{target_data['name']} -> {rel['type']} -> {source_data['name']}")
+
+        context = ["# Auto-Detected Model Context"]
+        if entities:
+            context.append("Entities:\n" + "\n".join(sorted(list(entities))))
+        if relationships:
+            context.append("Relationships:\n" + "\n".join(sorted(list(relationships))))
+            
+        return "\n\n".join(context)
 
 
     def _send_to_gemini(self, prompt):
@@ -527,58 +570,63 @@ class ArchiIngestorApp:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
             selected_model = self.model_var.get().strip() or "models/gemini-2.5-pro"
-
             model = genai.GenerativeModel(selected_model)
-            # Prepare context
-            if not hasattr(self, "gemini_context_sent"):
-                self.gemini_context_sent = False
-            if not hasattr(self, "gemini_delta_mode"):
-                self.gemini_delta_mode = False
 
+            # --- Build Authoritative Lists ---
+            all_element_types = sorted(list(FOLDER_MAP.keys()))
+            all_relationship_types = sorted(list(RELATIONSHIP_TYPES))
+
+            # --- Build Context based on selected strategy ---
+            strategy = self.gemini_context_strategy_var.get()
             context = ""
-            if not self.gemini_context_sent:
-                context = self.build_gemini_context(delta_only=False)
-                self.gemini_context_sent = True
-            elif self.gemini_delta_mode:
-                context = self.build_gemini_context(delta_only=True)
-            # Construct a detailed prompt for the model
+            if strategy == "Full Model":
+                context = self.build_gemini_context()
+            elif strategy == "Auto-Detect":
+                context = self._build_auto_context(prompt)
+            else: # "None (Stateless)"
+                context = "# No model context was provided."
+
+
+            # --- New, Re-structured System Prompt ---
             system_prompt = f"""
-You are an expert in Enterprise Architecture and the ArchiMate modeling language.
-Your task is to represent the results of a user's request as TOGAF architecture elements in a specific text format that can be parsed by a tool.
-The output format is a list of elements and relationships, one per line.
+# Persona
+You are an expert Enterprise Architect and a master of the ArchiMate modeling language. Your purpose is to act as a creative modeling partner who communicates solutions exclusively in a structured text format.
 
-The format for elements is:
-ElementType | ElementName | attribute1=value1 | attribute2=value2
+# Core Task
+Analyze the user's request and the provided model context. Design a concise and logical architectural model that fulfills the request. Then, represent your entire solution as a list of new elements and relationships using the strict format defined below.
 
-The format for relationships is:
-RelationshipType | SourceElementName | target=TargetElementName | attribute1=value1
+# Output Format
+- Elements: `ElementType | ElementName | description=...`
+- Relationships: `RelationshipType | SourceElementName | source_type=SourceElementType | target=TargetElementName | target_type=TargetElementType | description=...`
 
-Here are some valid element types you should use:
-{', '.join(COMMON_TYPES)}
+## Example:
+`BusinessActor | Planning Officer | description=A role responsible for urban and regional planning.`
+`Goal | Improve Permit Processing Time | description=Reduce the average time to approve new building permits.`
+`InfluenceRelationship | Planning Officer | source_type=BusinessActor | target=Improve Permit Processing Time | target_type=Goal | description=The officer's work directly impacts permit efficiency.`
 
-Here are the valid relationship types you should use:
-{', '.join(RELATIONSHIP_TYPES)}
+# Authoritative Lists
+- You MUST use element types from this complete list: {', '.join(all_element_types)}
+- You MUST use relationship types from this complete list: {', '.join(all_relationship_types)}
 
-RULES:
-1.  ONLY output text in the specified format.
-2.  No commentary or explanations.
-3.  Do NOT use markdown code blocks (```) in your response.
-4.  If the user's request is ambiguous, make a reasonable assumption based on common architectural patterns.
-5.  Ensure the relationship's source and target names exactly match the names of the elements you define.
-6.  If an element is mentioned multiple times, ensure it is only defined once.
-7.  Use 'description' as an attribute to provide additional details about elements or relationships.
-8.  If the user requests multiple elements or relationships, list each on a new line.
-9.  If the user requests an element type or relationship type not in the provided lists, substitute with the closest valid type.
-10.  If the user requests a relationship between two elements that is not valid according to ArchiMate rules, choose the closest valid relationship type or omit the relationship if no valid type exists.
-11.  If the user requests an element or relationship that already exists in the model (based on the names), do not create a duplicate; instead, reference the existing element by name.
-
-Here is any current model or context:
-{context}
-
-User's request: "{prompt}"
+# Critical Rules
+1.  **GENERATE CONTENT (MOST IMPORTANT RULE)**: Your primary value is generating meaningful content. Create specific, descriptive names for elements (e.g., "Online Permit Application Portal" instead of just "Application"). You MUST provide a concise `description` for every new element and relationship that explains its purpose and context.
+2.  **STRICT FORMATTING**: Adhere strictly to the output format. Do not add explanations, apologies, or any text outside of the defined format. Do not use markdown.
+3.  **RESOLVE AMBIGUITY**: When creating a relationship, you MUST include both `source_type` and `target_type` attributes. This is essential for creating correct links in a model where different elements might share the same name.
+4.  **USE AUTHORITATIVE LISTS**: Only use types from the lists provided above. If a user asks for a type not on a list, select the closest valid equivalent.
+5.  **LEVERAGE CONTEXT**: The provided model context is your source of truth. Before creating a new element, check if an element with the **same name AND type** already exists. If it does, reference it. If the user's request implies a new, distinct element, create it with a specific name that differentiates it.
+6.  **EXACT NAMING**: The `SourceElementName` and `TargetElementName` in a relationship must exactly match the names of the elements you are linking.
 """
 
-            response = model.generate_content(system_prompt)
+            # The user request and context are now added outside the main system prompt for clarity
+            full_prompt = [
+                system_prompt,
+                "# Model Context",
+                context,
+                "# User's Request",
+                f'"{prompt}"'
+            ]
+
+            response = model.generate_content("\n".join(full_prompt))
             response_text = response.text.strip()
 
             if not response_text:
@@ -715,6 +763,122 @@ User's request: "{prompt}"
             result_msg = "No missing elements or relationships found based on the current rules."
 
         self._show_report_window("Autocomplete Report", result_msg)
+
+    def _execute_autocomplete_action(self, rule, source_data, target_data, all_elements_by_id):
+        """Executes the 'action' part of an autocomplete rule, creating elements and relationships."""
+        added_elements = []
+        added_relationships = []
+        
+        action = rule['action']
+        
+        # --- Create Intermediate Element if specified ---
+        new_element_id = None
+        if 'create_element' in action:
+            new_element_type = action['create_element']['type']
+            # Use a format string for the name, substituting source/target names
+            name_template = action['create_element']['name']
+            new_element_name = name_template.format(source=source_data['name'], target=target_data['name'])
+
+            # Corrected duplicate check: Only skip if name AND type match
+            is_duplicate = False
+            # The DB now returns a list of potential matches
+            potential_matches = self.element_db.get(new_element_name.lower(), [])
+            existing_info = None
+            for match in potential_matches:
+                _, existing_type_full = match
+                if existing_type_full.split(":")[-1] == new_element_type:
+                    is_duplicate = True
+                    existing_info = match # Store the correct existing element
+                    break
+            
+            if not is_duplicate:
+                folder = self.get_folder_for_type(new_element_type)
+                if folder is not None:
+                    new_element_id = generate_id()
+                    attribs = {f"{{{XSI}}}type": f"archimate:{new_element_type}", "name": new_element_name, "id": new_element_id}
+                    new_el = ET.SubElement(folder, "element", attribs)
+                    
+                    # Update databases immediately
+                    self.element_db[new_element_name] = (new_element_id, f"archimate:{new_element_type}")
+                    self.element_db[new_element_name.lower()] = (new_element_id, f"archimate:{new_element_type}")
+                    all_elements_by_id[new_element_id] = {'id': new_element_id, 'type': new_element_type, 'name': new_element_name, 'el': new_el}
+                    added_elements.append(f"{new_element_type}: {new_element_name}")
+            else:
+                # If it's a duplicate, we still need its ID for relationship creation
+                new_element_id = existing_info[0] if existing_info else None
+
+        # --- Create Relationships ---
+        rel_folder = self.get_or_create_relations_folder()
+        for rel_action in action.get('create_relationships', []):
+            rel_type = rel_action['type']
+            
+            # Determine source and target based on the rule
+            source_id = source_data['id'] if rel_action['source'] == 'source' else (new_element_id if new_element_id else target_data['id'])
+            target_id = target_data['id'] if rel_action['target'] == 'target' else (new_element_id if new_element_id else source_data['id'])
+
+            # Check if this exact relationship already exists
+            if not self._relationship_exists(source_id, target_id, rel_type):
+                rel_id = generate_id()
+                rel_attribs = {
+                    f"{{{XSI}}}type": f"archimate:{rel_type}",
+                    "id": rel_id, "source": source_id, "target": target_id
+                }
+                ET.SubElement(rel_folder, "element", rel_attribs)
+                
+                source_name = all_elements_by_id.get(source_id, {}).get('name', 'Unknown')
+                target_name = all_elements_by_id.get(target_id, {}).get('name', 'Unknown')
+                added_relationships.append(f"{source_name} -> {rel_type} -> {target_name}")
+
+        return added_elements, added_relationships
+
+    def _relationship_exists(self, source_id, target_id, rel_type):
+        """Checks if a specific relationship already exists in the model."""
+        rel_type_full = f"archimate:{rel_type}"
+        for rel in self.find_all_relationships():
+            if (rel.get("source") == source_id and
+                rel.get("target") == target_id and
+                rel.get(f"{{{XSI}}}type") == rel_type_full):
+                return True
+        return False
+
+    def _evaluate_autocomplete_conditions(self, conditions, source_data, target_data):
+        """Evaluates if the conditions for an autocomplete rule are met."""
+        for condition in conditions:
+            if condition['type'] == 'no_relationship_of_type':
+                rel_types_to_check = condition['rel_types']
+                # Check for direct relationship
+                for rel in self.get_element_relationships(source_data['id']):
+                    if rel['id'] == target_data['id'] and rel['type'] in rel_types_to_check:
+                        return False  # Found a disallowed relationship, condition fails
+                # Check for reverse relationship
+                for rel in self.get_element_relationships(target_data['id']):
+                    if rel['id'] == source_data['id'] and rel['type'] in rel_types_to_check:
+                        return False  # Found a disallowed relationship, condition fails
+            
+            elif condition['type'] == 'name_similarity':
+                # Simple name similarity check (you can implement more sophisticated logic)
+                source_name = source_data['name'].lower()
+                target_name = target_data['name'].lower()
+                threshold = condition.get('threshold', 0.5)
+                
+                # Simple word overlap check
+                source_words = set(source_name.split())
+                target_words = set(target_name.split())
+                overlap = len(source_words & target_words) / max(len(source_words), len(target_words))
+                if overlap < threshold:
+                    return False
+            
+            elif condition['type'] == 'target_name_is_part_of_source':
+                source_name = source_data['name'].lower()
+                target_name = target_data['name'].lower()
+                threshold = condition.get('threshold', 0.8)
+                
+                # Check if target name appears within source name
+                if target_name not in source_name:
+                    return False
+        
+        return True  # All conditions passed
+
     # Add a more conservative validation function
     def validate_relationships_conservative(self):
         """
@@ -728,7 +892,7 @@ User's request: "{prompt}"
         common_illegal_patterns = [
             # Requirement -> BusinessService: Realization is illegal
             ("Requirement", "BusinessService", "RealizationRelationship"),
-            # BusinessService -> ApplicationComponent: Realization is questionable
+            # BusinessService -> ApplicationComponent: RealizationRelationship is questionable
             ("BusinessService", "ApplicationComponent", "RealizationRelationship"),
             # ApplicationComponent -> BusinessActor: Serving is questionable
             ("ApplicationComponent", "BusinessActor", "ServingRelationship"),
@@ -1435,15 +1599,34 @@ User's request: "{prompt}"
             return
         self.element_db.clear()
         self.element_db_by_id = {}
+        name_type_combinations = {}
+        warnings = []
+
         for element in self.model.findall(".//element"):
             name = element.get("name")
             element_id = element.get("id")
             element_type = element.get(f"{{{XSI}}}type", "")
+            
             if name and element_id:
-                self.element_db[name] = (element_id, element_type)
-                self.element_db[name.lower()] = (element_id, element_type)
+                name_lower = name.lower()
+                # Handle name collisions by storing a list of elements for each name
+                if name_lower not in self.element_db:
+                    self.element_db[name_lower] = []
+                self.element_db[name_lower].append((element_id, element_type))
+
+                # Check for duplicates of different types to warn the user
+                if name_lower in name_type_combinations and name_type_combinations[name_lower] != element_type:
+                    warnings.append(f"Warning: Name '{name}' is used by multiple element types. Lookups by name may be unpredictable without a type specifier.")
+                name_type_combinations[name_lower] = element_type
+
             if element_id:
                 self.element_db_by_id[element_id] = {'name': name, 'type': element_type}
+        
+        if warnings:
+            # Use a set to show unique warnings only
+            unique_warnings = "\n".join(sorted(list(set(warnings))))
+            print("--- Build Element Database Warnings --- \n" + unique_warnings)
+
 
     def build_relationship_map(self):
         """Builds a cache for quick lookup of relationships for each element."""
@@ -1490,6 +1673,7 @@ User's request: "{prompt}"
                 source_id = rel.get("source")
                 target_id = rel.get("target")
                 if source_id and source_id in counts:
+                   
                     counts[source_id]['out'] += 1
                 if target_id and target_id in counts:
                     counts[target_id]['in'] += 1
@@ -1596,10 +1780,9 @@ User's request: "{prompt}"
             return
 
         # Build a temp element_db for preview so relationships can resolve IDs
-        temp_db = dict(self.element_db)
+        temp_db = {k: list(v) for k, v in self.element_db.items()} # Make a mutable copy
         lines = [l.strip() for l in text.splitlines() if l.strip() and not l.startswith("#")]
         snippets = []
-        temp_ids = {}
 
         # First pass: assign IDs to new elements
         for ln in lines:
@@ -1611,11 +1794,20 @@ User's request: "{prompt}"
             if short.endswith("Relationship") or short in RELATIONSHIP_TYPES:
                 continue
             name = parts[1]
-            if name not in temp_db:
+            name_lower = name.lower()
+            
+            # Check if an element with this name and type already exists
+            is_duplicate = False
+            for _, existing_type in temp_db.get(name_lower, []):
+                if existing_type.split(":")[-1] == short:
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
                 new_id = generate_id()
-                temp_db[name] = (new_id, f"archimate:{raw_type}")
-                temp_db[name.lower()] = (new_id, f"archimate:{raw_type}")
-                temp_ids[name] = new_id
+                if name_lower not in temp_db:
+                    temp_db[name_lower] = []
+                temp_db[name_lower].append((new_id, f"archimate:{raw_type}"))
 
         # Second pass: generate XML snippets
         for ln in lines:
@@ -1634,10 +1826,13 @@ User's request: "{prompt}"
                         extras[k.strip()] = v.strip()
                 tgt_name = extras.get("target")
                 descr = extras.get("description")
-                src_id = temp_db.get(src_name, (None,))[0]
-                tgt_id = temp_db.get(tgt_name, (None,))[0]
+                
+                # For preview, we just pick the first match
+                src_id = (temp_db.get(src_name.lower(), [None])[0] or ("[source_id]",))[0]
+                tgt_id = (temp_db.get(tgt_name.lower(), [None])[0] or ("[target_id]",))[0] if tgt_name else "[target_id]"
+
                 snippet = f'<element xsi:type="archimate:{short}"'
-                snippet += f' source="{src_id or "[source_id]"}" target="{tgt_id or "[target_id]"}"'
+                snippet += f' source="{src_id}" target="{tgt_id}"'
                 if descr:
                     snippet += f' description="{descr}"'
                 snippet += ' />'
@@ -1650,7 +1845,10 @@ User's request: "{prompt}"
                         k,v = extra.split("=",1)
                         extras[k.strip()] = v.strip()
                 doc = extras.get("description")
-                el_id = temp_db.get(name, (None,))[0] or "[new_id]"
+                
+                # Find the ID from the temp DB, picking the first match for the preview
+                el_id = (temp_db.get(name.lower(), [None])[0] or ("[new_id]",))[0]
+
                 snippet = f'<element xsi:type="archimate:{raw_type}" name="{name}" id="{el_id}"'
                 if doc:
                     snippet += f'>\n  <documentation>{doc}</documentation>\n</element>'
@@ -1680,67 +1878,106 @@ User's request: "{prompt}"
         relationships_to_create = []
         self.create_default_folders()
 
-        # First pass: create elements and assign IDs
+        # First pass: Parse all lines, create elements, and queue relationships
         for ln in lines:
             parts = [p.strip() for p in ln.split("|")]
             if len(parts) < 2:
                 continue
+
             raw_type = parts[0]
-            short = raw_type.split(":")[-1]
-            if short.endswith("Relationship") or short in RELATIONSHIP_TYPES:
-                src_name = parts[1]
-                extras = {}
-                for extra in parts[2:]:
-                    if "=" in extra:
-                        k,v = extra.split("=",1)
-                        extras[k.strip()] = v.strip()
-                tgt_name = extras.get("target")
-                descr = extras.get("description")
-                relationships_to_create.append({
-                    "type": short,
-                    "source_name": src_name,
-                    "target_name": tgt_name,
-                    "description": descr
-                })
-                continue
-            name = parts[1]
+            name_or_source = parts[1]
+
+            # Parse all key-value attributes from the line
             extras = {}
             for extra in parts[2:]:
                 if "=" in extra:
-                    k,v = extra.split("=",1)
+                    k, v = extra.split("=", 1)
                     extras[k.strip()] = v.strip()
-            if name in self.element_db:
-                continue
-            etype_full = f"archimate:{raw_type}"
-            new_el_id = generate_id()
-            folder = self.get_folder_for_type(raw_type)
-            if folder is None:
-                continue
-            attribs = {f"{{{XSI}}}type": etype_full, "name": name, "id": new_el_id}
-            new_el = ET.SubElement(folder, "element", attribs)
-            doc_text = extras.get("description")
-            if doc_text:
-                doc_el = ET.SubElement(new_el, "documentation")
-                doc_el.text = doc_text
-            self.element_db[name] = (new_el_id, etype_full)
-            self.element_db[name.lower()] = (new_el_id, etype_full)
-            created_elements.append((name, new_el_id))
+
+            # A line is a relationship if and only if it has a 'target' attribute.
+            if 'target' in extras:
+                relationships_to_create.append({
+                    "type": raw_type.split(":")[-1],
+                    "source_name": name_or_source,
+                    "source_type": extras.get("source_type"), # Capture the new source type hint
+                    "target_name": extras.get("target"),
+                    "target_type": extras.get("target_type"), # Capture the target type hint
+                    "description": extras.get("description")
+                })
+            else:  # It's an element
+                name = name_or_source
+                
+                # Corrected duplicate check: An element is only a duplicate if both its name AND type match.
+                is_duplicate = False
+                potential_matches = self.element_db.get(name.lower(), [])
+                for _, existing_type_full in potential_matches:
+                    if existing_type_full.split(":")[-1] == raw_type.split(":")[-1]:
+                        is_duplicate = True
+                        break
+                
+                if is_duplicate:
+                    continue # Skip true duplicates (same name, same type)
+
+                etype_full = f"archimate:{raw_type}"
+                new_el_id = generate_id()
+                folder = self.get_folder_for_type(raw_type)
+
+                if folder is None:
+                    print(f"Warning: Could not find or create a folder for type '{raw_type}'. Skipping element '{name}'.")
+                    continue
+
+                attribs = {f"{{{XSI}}}type": etype_full, "name": name, "id": new_el_id}
+                new_el = ET.SubElement(folder, "element", attribs)
+                doc_text = extras.get("description")
+                if doc_text:
+                    doc_el = ET.SubElement(new_el, "documentation")
+                    doc_el.text = doc_text
+                
+                # Update the local name->ID cache immediately for subsequent relationship lookups
+                name_lower = name.lower()
+                if name_lower not in self.element_db:
+                    self.element_db[name_lower] = []
+                self.element_db[name_lower].append((new_el_id, etype_full))
+                created_elements.append((name, new_el_id))
 
         # Second pass: create relationships
         rel_folder = self.get_or_create_relations_folder()
         for rel in relationships_to_create:
             rtype = rel["type"]
             src_name = rel["source_name"]
+            src_type = rel["source_type"]
             tgt_name = rel["target_name"]
+            tgt_type = rel["target_type"]
             descr = rel.get("description")
-            src_info = self.element_db.get(src_name) or self.element_db.get(src_name.lower())
-            tgt_info = None
-            if tgt_name:
-                tgt_info = self.element_db.get(tgt_name) or self.element_db.get(tgt_name.lower())
+
+            # --- Robust Element Lookup Helper ---
+            def find_element_info(name, element_type_hint=None):
+                potential_matches = self.element_db.get(name.lower(), [])
+                if not potential_matches: 
+                    print(f"Warning: Could not find any element named '{name}'.")
+                    return None
+                
+                if len(potential_matches) == 1: 
+                    return potential_matches[0]
+                
+                # Ambiguity exists, try to resolve with type hint
+                if element_type_hint:
+                    hint_full = f"archimate:{element_type_hint}"
+                    for match in potential_matches:
+                        if match[1] == hint_full:
+                            return match
+                    print(f"Warning: Found elements named '{name}', but none of type '{element_type_hint}'.")
+                    return None
+                
+                print(f"Warning: Ambiguous element name '{name}' and no type hint provided. Skipping relationship.")
+                return None
+
+            src_info = find_element_info(src_name, src_type)
+            tgt_info = find_element_info(tgt_name, tgt_type) if tgt_name else None
 
             if not src_info or not tgt_info:
-                print(f"Warning: Could not find source '{src_name}' or target '{tgt_name}'")
-                continue
+                continue # Warnings are printed inside the helper
+            
             src_id, _ = src_info
             tgt_id, _ = tgt_info
             rel_id = generate_id()
@@ -1758,8 +1995,7 @@ User's request: "{prompt}"
         if created_elements or relationships_to_create:
             self.dirty = True
 
-        self.remove_relationships_from_other()
-        self.build_element_database() # Rebuild after adding elements
+        self.build_element_database() # Rebuild after adding all elements
         self.build_relationship_map()
         self.calculate_relationship_counts()
         self.refresh_tree()
@@ -1833,9 +2069,9 @@ User's request: "{prompt}"
 
     def get_folder_for_type(self, element_type):
         short = element_type.split(":")[-1]
-        if short.endswith("Relationship") or short in RELATIONSHIP_TYPES:
-            return None
-        folder_name = FOLDER_MAP.get(element_type, "Other")
+        # The check for relationship types is now handled robustly in the main insert_from_paste function.
+        # Removing the redundant check here prevents silent failures due to misconfiguration.
+        folder_name = FOLDER_MAP.get(short, "Other")
         for folder in self.model.findall("folder"):
             if folder.get("name") == folder_name:
                 return folder
