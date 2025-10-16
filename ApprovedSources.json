@@ -1,0 +1,12 @@
+{
+    "lincolnshire_gov": {
+        "name": "Lincolnshire County Council Website",
+        "url": "https://www.lincolnshire.gov.uk",
+        "description": "Official council website with service directories and strategies"
+    },
+    "custom_source_2": {
+        "name": "Gov_Government",
+        "url": "https://www.gov.uk/government/collections/fire-safety-legislation-guidance-for-those-with-legal-duties",
+        "description": "Fire Safety Legislation"
+    }
+}
