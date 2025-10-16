@@ -1,5 +1,10 @@
 # -- Archimate Ingester
-"latest" is the current working version.
+launcher should run the code 
+
+Use Builder to generate LLM Prompts
+Use ingester to get them into your model
+Use Viewer to look at them
+
 
 * Opens .archimate files.
 * Allows entities to be explored
@@ -10,7 +15,7 @@
  ---- Imports ----
  
 import tkinter as tk
-
+import numpy
 import xml.etree.ElementTree as ET
 
 import uuid
@@ -18,13 +23,3 @@ import uuid
 import copy
 
 import os
-
-from xml.dom import minidom
-
-import datetime
-
-from ThreeDViewer import ThreeDViewer
-
-import google.generativeai as genai 
-
-from config import FOLDER_MAP, COMMON_TYPES, RELATIONSHIP_TYPES, RELATIONSHIP_RULES, AUTOCOMPLETE_RULES
