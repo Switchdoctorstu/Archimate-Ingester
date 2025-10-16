@@ -2,7 +2,6 @@
 
 # Default values
 DEFAULT_ORGANISATION = "Lincolnshire County Council"
-DEFAULT_FOCUS = "Digital Transformation"
 
 # Architecture Domains for hierarchical selection
 ARCHITECTURE_DOMAINS = {
@@ -11,10 +10,10 @@ ARCHITECTURE_DOMAINS = {
         "description": "Drivers, goals, principles, outcomes",
         "elements": ["Stakeholder", "Driver", "Assessment", "Goal", "Principle", "Requirement", "Constraint", "Meaning", "Value", "Outcome"],
         "prompt_templates": [
-            "Create stakeholder analysis for {organisation} focusing on {focus}",
-            "Define strategic drivers and assessments for {organisation}'s {focus} initiatives",
-            "Establish goals and outcomes for {organisation}'s {focus} transformation",
-            "Identify principles and requirements guiding {organisation}'s {focus} approach"
+            "Create stakeholder analysis for {organisation}",
+            "Define strategic drivers and assessments for {organisation}",
+            "Establish goals and outcomes for {organisation}",
+            "Identify principles and requirements guiding {organisation}"
         ]
     },
     "value_streams": {
@@ -22,9 +21,9 @@ ARCHITECTURE_DOMAINS = {
         "description": "Value creation and service delivery",
         "elements": ["ValueStream", "BusinessService", "Product", "Contract", "BusinessEvent"],
         "prompt_templates": [
-            "Model value streams for {organisation}'s service delivery in {focus}",
-            "Define business services and products for {organisation}'s {focus} capabilities",
-            "Identify service contracts and business events in {organisation}'s {focus} operations"
+            "Model value streams for {organisation}'s service delivery",
+            "Define business services and products for {organisation}",
+            "Identify service contracts and business events in {organisation}'s operations"
         ]
     },
     "business_architecture": {
@@ -32,9 +31,9 @@ ARCHITECTURE_DOMAINS = {
         "description": "Organisation structure and processes",
         "elements": ["BusinessActor", "BusinessRole", "BusinessProcess", "BusinessFunction", "BusinessObject", "BusinessInteraction"],
         "prompt_templates": [
-            "Define business actors and roles for {organisation}'s {focus} initiatives",
-            "Model business processes and functions for {organisation}'s {focus} operations", 
-            "Identify business objects and interactions in {organisation}'s {focus} workflows"
+            "Define business actors and roles for {organisation}",
+            "Model business processes and functions for {organisation}",
+            "Identify business objects and interactions in {organisation}'s workflows"
         ]
     },
     "application_architecture": {
@@ -42,9 +41,9 @@ ARCHITECTURE_DOMAINS = {
         "description": "Systems, data and interfaces",
         "elements": ["ApplicationComponent", "ApplicationService", "DataObject", "ApplicationInterface", "ApplicationFunction"],
         "prompt_templates": [
-            "Define application components supporting {organisation}'s {focus}",
-            "Model application services and interfaces for {organisation}'s {focus} systems",
-            "Identify data objects and application functions in {organisation}'s {focus} architecture"
+            "Define application components supporting {organisation}",
+            "Model application services and interfaces for {organisation}",
+            "Identify data objects and application functions in {organisation}'s architecture"
         ]
     },
     "technology_architecture": {
@@ -52,9 +51,9 @@ ARCHITECTURE_DOMAINS = {
         "description": "Infrastructure and platforms",
         "elements": ["Technology", "Device", "SystemSoftware", "TechnologyService", "Node", "Network"],
         "prompt_templates": [
-            "Define technology infrastructure supporting {organisation}'s {focus}",
-            "Model technology services and platforms for {organisation}'s {focus} capabilities",
-            "Identify devices and system software in {organisation}'s {focus} technology landscape"
+            "Define technology infrastructure supporting {organisation}",
+            "Model technology services and platforms for {organisation}",
+            "Identify devices and system software in {organisation}'s technology landscape"
         ]
     },
     "implementation": {
@@ -62,49 +61,50 @@ ARCHITECTURE_DOMAINS = {
         "description": "Projects, work packages and transition",
         "elements": ["WorkPackage", "Deliverable", "ImplementationEvent", "Plateau", "Gap"],
         "prompt_templates": [
-            "Define work packages and deliverables for {organisation}'s {focus} implementation",
-            "Model implementation roadmap and plateaus for {organisation}'s {focus} transition",
-            "Identify capability gaps and implementation events in {organisation}'s {focus} journey"
+            "Define work packages and deliverables for {organisation}",
+            "Model implementation roadmap and plateaus for {organisation}",
+            "Identify capability gaps and implementation events in {organisation}'s journey"
         ]
     }
 }
 
-# Approved Bibliography - Only use these sources
-APPROVED_SOURCES = {
-    "lincolnshire_gov": {
-        "name": "Lincolnshire County Council Website",
-        "url": "https://www.lincolnshire.gov.uk",
-        "description": "Official council website with service directories and strategies"
-    },
-    "lincolnshire_digital_strategy": {
-        "name": "Lincolnshire Digital Strategy 2023-28", 
-        "url": "https://www.lincolnshire.gov.uk/digital-strategy",
-        "description": "Official digital transformation strategy document"
-    },
-    "lincolnshire_climate_strategy": {
-        "name": "Lincolnshire Climate Strategy",
-        "url": "https://www.lincolnshire.gov.uk/climate-strategy",
-        "description": "Climate and environment strategy and action plan"
-    },
-    "lincolnshire_committee_papers": {
-        "name": "Lincolnshire Committee Papers",
-        "url": "https://www.lincolnshire.gov.uk/committees",
-        "description": "Official committee meeting papers and decisions"
-    },
-    "uk_gov_service_manual": {
-        "name": "GOV.UK Service Manual",
-        "url": "https://www.gov.uk/service-manual",
-        "description": "UK Government Digital Service standards and patterns"
-    },
-    "local_gov_association": {
-        "name": "Local Government Association",
-        "url": "https://www.local.gov.uk",
-        "description": "UK local government standards and best practices"
-    }
-}
+# Load approved sources from JSON file
+import json
+import os
+
+def load_approved_sources():
+    """Load approved sources from JSON file"""
+    try:
+        if os.path.exists("ApprovedSources.json"):
+            with open("ApprovedSources.json", 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            # Return default sources if file doesn't exist
+            return {
+                "lincolnshire_gov": {
+                    "name": "Lincolnshire County Council Website",
+                    "url": "https://www.lincolnshire.gov.uk",
+                    "description": "Official council website with service directories and strategies"
+                }
+            }
+    except Exception as e:
+        print(f"Error loading approved sources: {e}")
+        return {}
+
+def save_approved_sources(sources):
+    """Save approved sources to JSON file"""
+    try:
+        with open("ApprovedSources.json", 'w', encoding='utf-8') as f:
+            json.dump(sources, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error saving approved sources: {e}")
+        return False
+
+# Load initial sources
+APPROVED_SOURCES = load_approved_sources()
 
 # Header Prompt Template - PLAIN TEXT VERSION
-
 HEADER_PROMPT = """MANDATORY FORMAT RULE: Output MUST be a valid JSON array of objects. Each object represents one ArchiMate entity.
 
 OUTPUT FORMAT: Return ONLY a JSON array with this structure:
@@ -150,7 +150,6 @@ CRITICAL RULES:
 
 Remember: Your entire response must be parseable by JSON.parse()
 """
-
 
 # Validation rules
 VALIDATION_RULES = {
