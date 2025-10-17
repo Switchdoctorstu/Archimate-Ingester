@@ -108,8 +108,7 @@ class SceneNode:
         try:
             if not pygame.font.get_init():
                 pygame.font.init()
-            faces = ['front', 'back', 'top', 'bottom', 'left', 'right']
-            # Name texture
+            # Name texture - for all faces
             if self.label:
                 font = pygame.font.SysFont('arial', 16)
                 text_surface = font.render(self.label, True, (255, 255, 255))
@@ -117,6 +116,8 @@ class SceneNode:
                 text_surface_rgba.blit(text_surface, (0, 0))
                 text_data = pygame.image.tostring(text_surface_rgba, "RGBA", True)
                 width, height = text_surface_rgba.get_width(), text_surface_rgba.get_height()
+                # Create name textures for all faces
+                faces = ['front', 'back', 'top', 'bottom', 'left', 'right']
                 for face in faces:
                     tex_id = glGenTextures(1)
                     glBindTexture(GL_TEXTURE_2D, tex_id)
@@ -124,7 +125,7 @@ class SceneNode:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
                     self.name_textures[face] = {'id': tex_id, 'width': width, 'height': height}
-            # Type texture
+            # Type texture - for all faces
             if self.element_type:
                 font = pygame.font.SysFont('arial', 12)
                 type_text = f"<{self.element_type}>"
@@ -133,6 +134,8 @@ class SceneNode:
                 text_surface_rgba.blit(text_surface, (0, 0))
                 text_data = pygame.image.tostring(text_surface_rgba, "RGBA", True)
                 width, height = text_surface_rgba.get_width(), text_surface_rgba.get_height()
+                # Create type textures for all faces
+                faces = ['front', 'back', 'top', 'bottom', 'left', 'right']
                 for face in faces:
                     tex_id = glGenTextures(1)
                     glBindTexture(GL_TEXTURE_2D, tex_id)
@@ -170,6 +173,8 @@ class SceneNode:
         return self.original_color
 
     def render(self):
+        # Disable lighting for consistent colors
+        glDisable(GL_LIGHTING)
         display_color = self.get_display_color()
         glColor3f(*display_color)
         glBegin(GL_QUADS)
@@ -189,21 +194,18 @@ class SceneNode:
 
         if not self.is_dimmed:
             self._render_all_labels()
+        
+        # Re-enable lighting for other objects if needed
+        #glEnable(GL_LIGHTING)
 
     def _render_all_labels(self):
         x, y, z = self.pos
-        # front
+        # Render name on front and back
         self._render_name_label(x, y, z + self.size * 0.5 + 0.01, 'front', self.size * 0.8, 0, 0, 1)
-        # back
         self._render_name_label(x, y, z - self.size * 0.5 - 0.01, 'back', self.size * 0.8, 0, 0, -1)
-        # top
-        self._render_name_label(x, y + self.size * 0.5 + 0.01, z, 'top', self.size * 0.8, 0, 1, 0)
-        # bottom
-        self._render_name_label(x, y - self.size * 0.5 - 0.01, z, 'bottom', self.size * 0.8, 0, -1, 0)
-        # right
-        self._render_name_label(x + self.size * 0.5 + 0.01, y, z, 'right', self.size * 0.8, 1, 0, 0)
-        # left
-        self._render_name_label(x - self.size * 0.5 - 0.01, y, z, 'left', self.size * 0.8, -1, 0, 0)
+        # Render type on top and bottom
+        self._render_type_label(x, y + self.size * 0.5 + 0.01, z, 'top', self.size * 0.8, 0, 1, 0)
+        self._render_type_label(x, y - self.size * 0.5 - 0.01, z, 'bottom', self.size * 0.8, 0, -1, 0)
 
     def _render_name_label(self, x, y, z, face, quad_size, normal_x, normal_y, normal_z):
         if face not in self.name_textures:
@@ -212,39 +214,39 @@ class SceneNode:
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, tex_data['id'])
         glColor3f(1, 1, 1)
-        if abs(normal_y) > 0:
-            left = x - quad_size
-            right = x + quad_size
-            front = z - quad_size * 0.3
-            back = z + quad_size * 0.3
-            glBegin(GL_QUADS)
-            glTexCoord2f(0, 0); glVertex3f(left, y, front)
-            glTexCoord2f(1, 0); glVertex3f(right, y, front)
-            glTexCoord2f(1, 1); glVertex3f(right, y, back)
-            glTexCoord2f(0, 1); glVertex3f(left, y, back)
-            glEnd()
-        elif abs(normal_x) > 0:
-            bottom = y - quad_size * 0.3
-            top = y + quad_size * 0.3
-            front = z - quad_size * 0.3
-            back = z + quad_size * 0.3
-            glBegin(GL_QUADS)
-            glTexCoord2f(0, 0); glVertex3f(x, bottom, front)
-            glTexCoord2f(1, 0); glVertex3f(x, top, front)
-            glTexCoord2f(1, 1); glVertex3f(x, top, back)
-            glTexCoord2f(0, 1); glVertex3f(x, bottom, back)
-            glEnd()
-        else:
-            left = x - quad_size
-            right = x + quad_size
-            bottom = y - quad_size * 0.3
-            top = y + quad_size * 0.3
-            glBegin(GL_QUADS)
-            glTexCoord2f(0, 0); glVertex3f(left, bottom, z)
-            glTexCoord2f(1, 0); glVertex3f(right, bottom, z)
-            glTexCoord2f(1, 1); glVertex3f(right, top, z)
-            glTexCoord2f(0, 1); glVertex3f(left, top, z)
-            glEnd()
+        
+        left = x - quad_size
+        right = x + quad_size
+        bottom = y - quad_size * 0.3
+        top = y + quad_size * 0.3
+        
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex3f(left, bottom, z)
+        glTexCoord2f(1, 0); glVertex3f(right, bottom, z)
+        glTexCoord2f(1, 1); glVertex3f(right, top, z)
+        glTexCoord2f(0, 1); glVertex3f(left, top, z)
+        glEnd()
+        glDisable(GL_TEXTURE_2D)
+
+    def _render_type_label(self, x, y, z, face, quad_size, normal_x, normal_y, normal_z):
+        if face not in self.type_textures:
+            return
+        tex_data = self.type_textures[face]
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, tex_data['id'])
+        glColor3f(1, 1, 1)
+        
+        left = x - quad_size
+        right = x + quad_size
+        front = z - quad_size * 0.3
+        back = z + quad_size * 0.3
+        
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex3f(left, y, front)
+        glTexCoord2f(1, 0); glVertex3f(right, y, front)
+        glTexCoord2f(1, 1); glVertex3f(right, y, back)
+        glTexCoord2f(0, 1); glVertex3f(left, y, back)
+        glEnd()
         glDisable(GL_TEXTURE_2D)
 
 
@@ -282,11 +284,12 @@ class RelationshipTube:
             if not pygame.font.get_init():
                 pygame.font.init()
             if self.rel_type:
-                font = pygame.font.SysFont('arial', 14)
+                # Use larger font for better visibility
+                font = pygame.font.SysFont('arial', 18)
                 display_text = self.rel_type.replace('Relationship', '')
                 text_surface = font.render(display_text, True, (255, 255, 255))
                 text_surface_rgba = pygame.Surface(text_surface.get_size(), pygame.SRCALPHA)
-                bg_color = (0, 0, 0, 150)
+                bg_color = (0, 0, 0, 180)
                 text_surface_rgba.fill(bg_color)
                 text_surface_rgba.blit(text_surface, (0, 0))
                 text_data = pygame.image.tostring(text_surface_rgba, "RGBA", True)
@@ -317,8 +320,12 @@ class RelationshipTube:
     def render(self):
         if self.length < 1e-6:
             return
+        
+        # Disable lighting for consistent colors
+        glDisable(GL_LIGHTING)
         display_color = self.get_display_color()
         glColor3f(*display_color)
+        
         z_axis = np.array([0.0, 0.0, 1.0])
         axis = np.cross(z_axis, self.direction)
         axis_norm = np.linalg.norm(axis)
@@ -338,36 +345,42 @@ class RelationshipTube:
         if not self.is_dimmed and self.type_tex_id:
             self._render_relationship_label(cylinder_radius)
         glPopMatrix()
+        
+        # Re-enable lighting for other objects
+        # glEnable(GL_LIGHTING)
 
     def _render_relationship_label(self, cylinder_radius):
+        """
+        IMPORTANT: This renders the relationship label following the tube direction.
+        DO NOT change to billboard style as architects need to see the flow direction.
+        The label is positioned along the tube and oriented with the tube's rotation.
+        """
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, self.type_tex_id)
         glColor3f(1, 1, 1)
-        label_pos = self.length * 0.5
-        quad_width = self.type_tex_width * 0.004
-        quad_height = self.type_tex_height * 0.004
-        offset = cylinder_radius + 0.04
+        
+        # Position label at 1/3 of the way along the tube for better visibility
+        label_pos = self.length * 0.5 # Adjusted to center along tube
+        # Increased quad size for larger text
+        quad_width = self.type_tex_width * 0.006
+        quad_height = self.type_tex_height * 0.006
+        
         glPushMatrix()
         glTranslatef(0, 0, label_pos)
-        modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
-        right = np.array([modelview[0][0], modelview[1][0], modelview[2][0]])
-        up = np.array([modelview[0][1], modelview[1][1], modelview[2][1]])
-        if np.linalg.norm(right) < 1e-6 or np.linalg.norm(up) < 1e-6:
-            right = np.array([1, 0, 0])
-            up = np.array([0, 1, 0])
-        right = right / np.linalg.norm(right)
-        up = up / np.linalg.norm(up)
-        corner1 = -right * quad_width - up * quad_height
-        corner2 = right * quad_width - up * quad_height
-        corner3 = right * quad_width + up * quad_height
-        corner4 = -right * quad_width + up * quad_height
-        label_pos_3d = np.array([0, offset, 0])
+        
+        # FIX: Rotate 90 degrees around X-axis to make text align with tube direction
+        glRotatef(90, 1, 0, 1)
+        
+        # Position label slightly away from tube surface
+        offset = cylinder_radius + 0.1
+        
         glBegin(GL_QUADS)
-        glTexCoord2f(0, 0); glVertex3fv(corner1 + label_pos_3d)
-        glTexCoord2f(1, 0); glVertex3fv(corner2 + label_pos_3d)
-        glTexCoord2f(1, 1); glVertex3fv(corner3 + label_pos_3d)
-        glTexCoord2f(0, 1); glVertex3fv(corner4 + label_pos_3d)
+        glTexCoord2f(0, 0); glVertex3f(-quad_width, offset, -quad_height)
+        glTexCoord2f(1, 0); glVertex3f(quad_width, offset, -quad_height)
+        glTexCoord2f(1, 1); glVertex3f(quad_width, offset, quad_height)
+        glTexCoord2f(0, 1); glVertex3f(-quad_width, offset, quad_height)
         glEnd()
+        
         glPopMatrix()
         glDisable(GL_TEXTURE_2D)
 
@@ -991,7 +1004,9 @@ class Archimate3DViewer:
             source_node = node_map.get(rel['source'])
             target_node = node_map.get(rel['target'])
             if source_node and target_node:
-                rel_color = self.RELATIONSHIP_COLORS.get(rel['type'], self.DEFAULT_LINK_COLOR)
+                # USE THE SAME TRIMMED TYPE FOR COLOR LOOKUP
+                trimmed_type = self._strip_archimate_prefix(rel['type'])
+                rel_color = self.RELATIONSHIP_COLORS.get(trimmed_type, self.DEFAULT_LINK_COLOR)
                 # determine strength (used by impact visualization) default 1.0
                 strength = 1.0
                 tube = RelationshipTube(self, source_node.pos, target_node.pos, rel_color, rel['type'], radius=0.04, strength=strength)
@@ -1089,11 +1104,8 @@ class Archimate3DViewer:
             glEnable(GL_BLEND)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
             glClearColor(0.05, 0.05, 0.1, 1.0)
-            glEnable(GL_LIGHTING)
-            glEnable(GL_LIGHT0)
-            glLightfv(GL_LIGHT0, GL_POSITION, [0, 1, 1, 0])
-            glLightfv(GL_LIGHT0, GL_DIFFUSE, [1, 1, 1, 1])
-            glLightfv(GL_LIGHT0, GL_AMBIENT, [0.3, 0.3, 0.3, 1])
+            # Don't enable lighting at all for consistent colors
+            glDisable(GL_LIGHTING)
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
             gluPerspective(45, display[0] / display[1], 0.1, 500.0)
@@ -1106,8 +1118,6 @@ class Archimate3DViewer:
             running = True
             last_mouse_pos = None
             is_rotating = False
-            font = pygame.font.SysFont('Arial', 14)
-            small_font = pygame.font.SysFont('Arial', 12)
             while running:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
@@ -1146,47 +1156,34 @@ class Archimate3DViewer:
                             yaw += dx * 0.005
                             pitch = max(-math.pi/2 + 0.01, min(math.pi/2 - 0.01, pitch - dy * 0.005))
                             last_mouse_pos = event.pos
+                
+                # Clear the screen
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
                 glLoadIdentity()
+                
+                # Set up camera
                 cam_x = orbit_center[0] + cam_dist * math.cos(yaw) * math.cos(pitch)
                 cam_y = orbit_center[1] + cam_dist * math.sin(pitch)
                 cam_z = orbit_center[2] + cam_dist * math.sin(yaw) * math.cos(pitch)
                 gluLookAt(cam_x, cam_y, cam_z, orbit_center[0], orbit_center[1], orbit_center[2], 0, 1, 0)
-                glDisable(GL_LIGHTING)
-                # relationships first
+                
+                # Render all objects (lighting is disabled for consistent colors)
                 for rel in self.scene_relationships:
                     rel.render()
-                # nodes
+                
                 for node in self.scene_nodes:
                     node.update_vertices()
                     node.render()
-                glEnable(GL_LIGHTING)
-                # HUD overlay (drawn via pygame on top)
-                pygame.display.flip()
-                # draw HUD using pygame surfaces
-                # To overlay text, we blit immediately after flip onto screen, then flip again
-                hud = pygame.Surface(display, pygame.SRCALPHA)
-                # Legend
-                legend_text = f"Nodes: {len(self.scene_nodes)}  Relationships: {len(self.scene_relationships)}  Focus: {self._strip_archimate_prefix(self.elements[self.focused_node_id]['name']) if self.focused_node_id else 'None'}"
-                t_surf = font.render(legend_text, True, (255,255,255))
-                hud.blit(t_surf, (8, 8))
-                # Heatmap legend
-                if self.show_heatmap:
-                    hud.blit(small_font.render("Heatmap (low → high):", True, (255,255,255)), (8, 34))
-                    for i in range(11):
-                        s = i/10.0
-                        r = int((0.2 + 0.8*s)*255)
-                        g = int(max(0.2, (1.0-s)*0.9)*255)
-                        b = int(max(0.2, (1.0-s)*0.9)*255)
-                        pygame.draw.rect(hud, (r,g,b), (160 + i*14, 34, 12, 12))
-                # small instructions
-                hud.blit(small_font.render("Left click: focus. Right drag: rotate. Mouse wheel: zoom. R: reset camera. C: clear focus", True, (200,200,200)), (8, 60))
-                # Blit HUD
-                screen.blit(hud, (0,0))
+                
+                # Render HUD using pygame (2D overlay)
+                self._render_hud(screen, display)
+                
                 pygame.display.flip()
                 clock.tick(60)
+            
             pygame.quit()
             print("3D viewer closed")
+            
         except Exception as e:
             print(f"Error in 3D viewer: {e}")
             traceback.print_exc()
@@ -1194,6 +1191,37 @@ class Archimate3DViewer:
                 pygame.quit()
             except:
                 pass
+
+    def _render_hud(self, screen, display):
+        """Render HUD overlay using pygame"""
+        # Create HUD surface
+        hud = pygame.Surface(display, pygame.SRCALPHA)
+        
+        # Create fonts
+        font = pygame.font.SysFont('Arial', 14)
+        small_font = pygame.font.SysFont('Arial', 12)
+        
+        # Legend
+        focus_name = self._strip_archimate_prefix(self.elements[self.focused_node_id]['name']) if self.focused_node_id else 'None'
+        legend_text = f"Nodes: {len(self.scene_nodes)}  Relationships: {len(self.scene_relationships)}  Focus: {focus_name}"
+        t_surf = font.render(legend_text, True, (255,255,255))
+        hud.blit(t_surf, (8, 8))
+        
+        # Heatmap legend
+        if self.show_heatmap:
+            hud.blit(small_font.render("Heatmap (low → high):", True, (255,255,255)), (8, 34))
+            for i in range(11):
+                s = i/10.0
+                r = int((0.2 + 0.8*s)*255)
+                g = int(max(0.2, (1.0-s)*0.9)*255)
+                b = int(max(0.2, (1.0-s)*0.9)*255)
+                pygame.draw.rect(hud, (r,g,b), (160 + i*14, 34, 12, 12))
+        
+        # Instructions
+        hud.blit(small_font.render("Left click: focus. Right drag: rotate. Mouse wheel: zoom. R: reset camera. C: clear focus", True, (200,200,200)), (8, 60))
+        
+        # Blit HUD to screen
+        screen.blit(hud, (0,0))
 
     def raycast_select(self, mouse_pos, display):
         if not self.scene_nodes:
