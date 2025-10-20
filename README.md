@@ -1,4 +1,11 @@
-# -- Archimate Ingester
+# -- Archimate Toolset 
+
+Prompt builder - Builds LLM prompts to explore an organisation and output archimate entities in JSON format
+JSON Ingester - Adds new JSON elements to Archimate files
+Viewer - Explore the model
+Modeller - Look for insights.
+
+
 launcher should run the code 
 
 Use Builder to generate LLM Prompts
