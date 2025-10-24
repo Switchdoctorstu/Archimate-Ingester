@@ -1,0 +1,1792 @@
+"""
+INNOVATION IMPACT ANALYZER - AI-Powered Archimate Assessment
+Multi-AI provider support with Pyvis visualizations and Executive Reporting
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox, scrolledtext, filedialog
+import json
+import os
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+import requests
+import google.generativeai as genai
+from openai import OpenAI
+import tiktoken
+import networkx as nx
+from pyvis.network import Network
+import webbrowser
+import tempfile
+import math
+import datetime
+from datetime import datetime
+import re
+import base64
+
+# Import your existing Archimate handling components
+from graphml_core import GraphMLArchimateModel
+from networkx_analyzer import ArchimateAnalyzer
+
+class ReportGenerator:
+    """Generate beautiful executive reports from analysis results"""
+    
+    def __init__(self, ai_provider):
+        self.ai_provider = ai_provider
+        
+    def generate_executive_report(self, analysis_results: Dict, innovation_text: str, 
+                                archimate_model_name: str, provider: str) -> str:
+        """Generate a comprehensive executive report using AI"""
+        
+        # Check if we have a valid analysis to work with
+        if 'error' in analysis_results:
+            return self._generate_comprehensive_fallback_report({
+                "innovation_description": innovation_text,
+                "model_name": archimate_model_name,
+                "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "impact_summary": analysis_results.get('impact_summary', {}),
+                "affected_elements": analysis_results.get('affected_elements', []),
+                "recommendations": analysis_results.get('recommendations', []),
+            })
+        
+        report_data = {
+            "innovation_description": innovation_text,
+            "model_name": archimate_model_name,
+            "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "impact_summary": analysis_results.get('impact_summary', {}),
+            "affected_elements": analysis_results.get('affected_elements', []),
+            "recommendations": analysis_results.get('recommendations', []),
+            "model_used": analysis_results.get('_model_used', 'Unknown')
+        }
+        
+        # Try AI report generation with simplified data to avoid token limits
+        try:
+            # Use a simpler approach with fewer tokens
+            simplified_data = {
+                "innovation": innovation_text[:500],  # Limit length
+                "impact_score": report_data['impact_summary'].get('overall_score', 0),
+                "confidence": report_data['impact_summary'].get('confidence', 0),
+                "key_benefits": report_data['impact_summary'].get('key_benefits', [])[:5],
+                "key_risks": report_data['impact_summary'].get('key_risks', [])[:5],
+                "affected_elements_count": len(report_data['affected_elements']),
+                "top_recommendations": [rec.get('action', '') for rec in report_data['recommendations'][:3]]
+            }
+            
+            if self.ai_provider.providers[provider]["type"] == "google":
+                return self._call_gemini_report(provider, simplified_data)
+            else:
+                return self._call_openai_report(provider, simplified_data)
+                
+        except Exception as e:
+            print(f"AI Report generation failed, using fallback: {e}")
+            # Use the comprehensive fallback instead of simple fallback
+            return self._generate_comprehensive_fallback_report(report_data)
+    
+    def _call_gemini_report(self, model: str, report_data: Dict) -> str:
+        """Generate report using Gemini with simplified data"""
+        if not self.ai_provider.google_client:
+            raise ValueError("Google API not configured")
+        
+        system_prompt = """Create a concise executive report in markdown about an innovation's enterprise architecture impact.
+        Structure: Executive Summary, Strategic Impact, Key Findings, Recommendations.
+        Be honest and data-driven."""
+        
+        prompt = f"""
+{system_prompt}
+
+DATA:
+{json.dumps(report_data, indent=2)}
+
+Generate markdown report:
+"""
+        
+        try:
+            model_obj = self.ai_provider.google_client.GenerativeModel(model)
+            response = model_obj.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            print(f"Gemini report error: {e}")
+            raise Exception(f"Report generation failed: {str(e)}")
+    
+    def _call_openai_report(self, model: str, report_data: Dict) -> str:
+        """Generate report using OpenAI"""
+        if not self.ai_provider.openai_client:
+            raise ValueError("OpenAI API not configured")
+            
+        system_prompt = """Create a concise executive report in markdown about an innovation's enterprise architecture impact."""
+        
+        prompt = f"""
+{system_prompt}
+
+DATA:
+{json.dumps(report_data, indent=2)}
+"""
+        
+        try:
+            response = self.ai_provider.openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise Exception(f"OpenAI report generation failed: {str(e)}")
+    
+    def _generate_comprehensive_fallback_report(self, report_data: Dict) -> str:
+        """Generate a comprehensive executive report from analysis data without AI"""
+        impact = report_data['impact_summary']
+        elements = report_data['affected_elements']
+        recommendations = report_data['recommendations']
+        
+        # Calculate overall viability
+        overall_score = impact.get('overall_score', 0)
+        if overall_score >= 0.7:
+            viability = "HIGH"
+            decision = "GO"
+            decision_emoji = "🟢"
+            decision_explanation = "Strong alignment with strategic goals"
+        elif overall_score >= 0.4:
+            viability = "MEDIUM" 
+            decision = "CAUTION"
+            decision_emoji = "🟡"
+            decision_explanation = "Moderate impact with some risks"
+        else:
+            viability = "LOW"
+            decision = "NO-GO"
+            decision_emoji = "🔴"
+            decision_explanation = "Limited benefits or significant risks"
+        
+        # Group elements by impact type and get top ones
+        positive_elements = sorted([e for e in elements if e.get('impact_type') == 'positive'], 
+                                 key=lambda x: x.get('impact_score', 0), reverse=True)[:5]
+        negative_elements = sorted([e for e in elements if e.get('impact_type') == 'negative'], 
+                                 key=lambda x: x.get('impact_score', 0), reverse=True)[:3]
+        
+        # Get top recommendations
+        top_recommendations = sorted(recommendations, 
+                                   key=lambda x: {'high': 3, 'medium': 2, 'low': 1}.get(x.get('urgency', 'low'), 0), 
+                                   reverse=True)[:5]
+        
+        report = f"""# Enterprise Innovation Impact Report
+
+**Report Date:** {report_data['analysis_date']}  
+**Architecture Model:** {report_data['model_name']}  
+**Analysis Confidence:** {impact.get('confidence', 0):.1%}
+
+## 🎯 Executive Summary
+
+{decision_emoji} **RECOMMENDATION: {decision}** - {decision_explanation}
+
+**Innovation:** {report_data['innovation_description']}
+
+**Overall Impact Score:** **{overall_score:.2f}/1.0**  
+**Strategic Viability:** **{viability}**  
+**Implementation Complexity:** {impact.get('complexity', 'Unknown').upper()}  
+**Estimated Timeline:** {impact.get('estimated_timeline', 'Unknown').upper()}
+
+## 📊 Strategic Impact Assessment
+
+### Key Benefits
+{"No significant benefits identified" if not impact.get('key_benefits') else chr(10).join(['• ' + benefit for benefit in impact.get('key_benefits', [])])}
+
+### Major Risks  
+{"No major risks identified" if not impact.get('key_risks') else chr(10).join(['• ' + risk for risk in impact.get('key_risks', [])])}
+
+## 🎯 Key Architecture Impacts
+
+**Total Elements Analyzed:** {len(elements)} architecture components
+
+### Most Positively Impacted Elements
+{"No significant positive impacts" if not positive_elements else chr(10).join([f"• **{elem.get('element_name', 'Unknown')}** ({elem.get('element_type', 'Unknown')}) - Impact: {elem.get('impact_score', 0):.2f}" for elem in positive_elements])}
+
+### Key Risk Elements
+{"No significant risk elements" if not negative_elements else chr(10).join([f"• **{elem.get('element_name', 'Unknown')}** ({elem.get('element_type', 'Unknown')}) - Risk Score: {elem.get('impact_score', 0):.2f}" for elem in negative_elements])}
+
+## 🚀 Implementation Recommendations
+
+{chr(10).join([f"### {i+1}. {rec.get('action', 'Unknown action')}\n   - **Urgency:** {rec.get('urgency', 'unknown').upper()}\n   - **Effort:** {rec.get('effort', 'unknown').upper()}\n   - **Rationale:** {rec.get('reason', 'No reason provided')}" for i, rec in enumerate(top_recommendations)])}
+
+## 📈 Next Steps
+
+1. **Review Detailed Analysis** - Examine full impact network visualization
+2. **Stakeholder Engagement** - Present findings to business and IT leadership  
+3. **Feasibility Assessment** - Validate technical and operational constraints
+4. **Roadmap Development** - Create phased implementation plan
+5. **Risk Mitigation** - Address identified architecture risks
+
+---
+
+*Report generated by Enterprise Architecture Innovation Analyzer*  
+*Confidential - For Executive Review*"""
+        
+        return report
+    
+    def generate_impact_network_html(self, analysis_results: Dict, innovation_text: str) -> str:
+        """Generate Pyvis network HTML for embedding in reports"""
+        try:
+            # Create network
+            net = Network(height="500px", width="100%", bgcolor="#ffffff", font_color="black", directed=True)
+            
+            # Add innovation node
+            net.add_node("innovation", label="INNOVATION", color="#e74c3c", 
+                        size=35, shape="diamond", font={"size": 16, "face": "arial"},
+                        title=f"Innovation: {innovation_text[:100]}...")
+            
+            # Add affected elements
+            elements = analysis_results.get('affected_elements', [])
+            for elem in elements:
+                elem_id = elem.get('element_id', 'unknown')
+                elem_name = elem.get('element_name', 'Unknown')
+                impact_score = elem.get('impact_score', 0)
+                impact_type = elem.get('impact_type', 'neutral')
+                elem_type = elem.get('element_type', 'Unknown')
+                
+                # Determine color based on impact
+                if impact_type == 'positive':
+                    color = '#27ae60'  # Green
+                    border_color = '#1e8449'
+                elif impact_type == 'negative':
+                    color = '#e74c3c'  # Red
+                    border_color = '#cb4335'
+                else:
+                    color = '#f39c12'  # Orange
+                    border_color = '#d68910'
+                
+                # Size based on impact score
+                size = 25 + (impact_score * 25)
+                
+                net.add_node(elem_id, 
+                           label=f"{elem_name}\n({elem_type})",
+                           color=color,
+                           size=size, 
+                           font={"size": 10, "face": "arial"},
+                           title=f"Impact: {impact_score:.2f}\nType: {elem_type}\n{elem.get('rationale', 'No rationale')}",
+                           borderWidth=2,
+                           borderWidthSelected=3,
+                           shape="dot")
+                
+                # Add connection from innovation
+                net.add_edge("innovation", elem_id, 
+                           value=impact_score * 15,
+                           color=color,
+                           width=impact_score * 3 + 1,
+                           title=f"Impact Strength: {impact_score:.2f}",
+                           arrows={"to": {"enabled": True, "scaleFactor": 0.5}})
+            
+            # Generate HTML
+            return net.generate_html()
+            
+        except Exception as e:
+            print(f"Network generation failed: {e}")
+            return "<p>Impact network visualization unavailable</p>"
+    
+    def render_html_report(self, markdown_content: str, report_data: Dict, analysis_results: Dict, innovation_text: str) -> str:
+        """Convert markdown report to beautiful HTML with embedded network"""
+        
+        # Convert markdown to HTML
+        html_content = self._markdown_to_html(markdown_content)
+        
+        # Generate network visualization
+        network_html = self.generate_impact_network_html(analysis_results, innovation_text)
+        
+        # Calculate impact score class for styling
+        overall_score = report_data['impact_summary'].get('overall_score', 0)
+        if overall_score >= 0.7:
+            impact_score_class = "score-high"
+            impact_color = "#27ae60"
+        elif overall_score >= 0.4:
+            impact_score_class = "score-medium"
+            impact_color = "#f39c12"
+        else:
+            impact_score_class = "score-low"
+            impact_color = "#e74c3c"
+        
+        # Format confidence
+        confidence = report_data['impact_summary'].get('confidence', 0)
+        confidence_pct = f"{confidence:.1%}"
+        if confidence >= 0.8:
+            confidence_level = "High"
+        elif confidence >= 0.6:
+            confidence_level = "Medium"
+        else:
+            confidence_level = "Low"
+        
+        html_template = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Innovation Impact Report</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }}
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.1);
+            min-height: 100vh;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }}
+        .header h1 {{
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 300;
+        }}
+        .header .subtitle {{
+            font-size: 1.2rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }}
+        .metadata {{
+            background: #f8f9fa;
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #e9ecef;
+        }}
+        .metadata-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }}
+        .metadata-item {{
+            display: flex;
+            flex-direction: column;
+        }}
+        .metadata-label {{
+            font-size: 0.8rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }}
+        .metadata-value {{
+            font-size: 1rem;
+            color: #495057;
+            font-weight: 500;
+        }}
+        .content {{
+            padding: 2rem;
+        }}
+        .executive-summary {{
+            background: #e8f4fd;
+            border-left: 4px solid #3498db;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        .impact-score {{
+            display: inline-block;
+            background: {impact_color};
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin: 1rem 0;
+        }}
+        .network-section {{
+            margin: 3rem 0;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+        .network-header {{
+            background: #2c3e50;
+            color: white;
+            padding: 1rem;
+            font-weight: 600;
+        }}
+        .network-container {{
+            height: 600px;
+            background: #f8f9fa;
+        }}
+        .risk-warning {{
+            background: #fee;
+            border-left: 4px solid #e74c3c;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        .benefit-highlight {{
+            background: #efffee;
+            border-left: 4px solid #27ae60;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        h1, h2, h3, h4 {{
+            color: #2c3e50;
+            margin: 2rem 0 1rem 0;
+        }}
+        h1 {{ 
+            font-size: 2.2rem;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
+        }}
+        h2 {{ 
+            font-size: 1.8rem;
+            color: #3498db;
+        }}
+        h3 {{ font-size: 1.4rem; }}
+        h4 {{ font-size: 1.2rem; }}
+        p {{ margin: 1rem 0; }}
+        ul, ol {{ margin: 1rem 0 1rem 2rem; }}
+        li {{ margin: 0.5rem 0; }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }}
+        th, td {{
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }}
+        th {{
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }}
+        .recommendation-card {{
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        .urgency-high {{ border-left: 4px solid #e74c3c; }}
+        .urgency-medium {{ border-left: 4px solid #f39c12; }}
+        .urgency-low {{ border-left: 4px solid #27ae60; }}
+        .footer {{
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            margin-top: 3rem;
+        }}
+        .confidence-meter {{
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            margin-left: 0.5rem;
+        }}
+        .report-content h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }}
+        .report-content h2 {{ color: #3498db; margin-top: 2rem; }}
+        .report-content h3 {{ color: #2c3e50; }}
+        .report-content ul {{ margin: 1rem 0 1rem 2rem; }}
+        .report-content li {{ margin: 0.5rem 0; }}
+        .report-content strong {{ color: #2c3e50; }}
+        .report-content blockquote {{
+            border-left: 4px solid #3498db;
+            background: #f8f9fa;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 4px 4px 0;
+        }}
+        .legend {{
+            display: flex;
+            gap: 1rem;
+            margin: 1rem 0;
+            flex-wrap: wrap;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        .legend-color {{
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-chart-network"></i> Enterprise Innovation Impact Report</h1>
+            <div class="subtitle">Strategic Architecture Assessment & Impact Analysis</div>
+        </div>
+        
+        <div class="metadata">
+            <div class="metadata-grid">
+                <div class="metadata-item">
+                    <span class="metadata-label">Analysis Date</span>
+                    <span class="metadata-value">{report_data['analysis_date']}</span>
+                </div>
+                <div class="metadata-item">
+                    <span class="metadata-label">Enterprise Model</span>
+                    <span class="metadata-value">{report_data['model_name']}</span>
+                </div>
+                <div class="metadata-item">
+                    <span class="metadata-label">Impact Score</span>
+                    <span class="metadata-value">
+                        <span class="impact-score">{overall_score:.2f}/1.0</span>
+                    </span>
+                </div>
+                <div class="metadata-item">
+                    <span class="metadata-label">Analysis Confidence</span>
+                    <span class="metadata-value">
+                        {confidence_level}
+                        <span class="confidence-meter">{confidence_pct}</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="report-content">
+                {html_content}
+            </div>
+            
+            <div class="network-section">
+                <div class="network-header">
+                    <i class="fas fa-project-diagram"></i> Impact Network Visualization
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #e74c3c;"></div>
+                        <span>Innovation Source</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #27ae60;"></div>
+                        <span>Positive Impact</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #e74c3c;"></div>
+                        <span>Negative Impact</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #f39c12;"></div>
+                        <span>Neutral Impact</span>
+                    </div>
+                </div>
+                <div class="network-container">
+                    {network_html}
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p><i class="fas fa-shield-alt"></i> Generated by Enterprise Architecture Innovation Analyzer</p>
+            <p>Confidential - For Executive Review Only</p>
+        </div>
+    </div>
+</body>
+</html>"""
+        
+        return html_template
+    
+    def _markdown_to_html(self, markdown_text: str) -> str:
+        """Convert markdown to HTML using simple regex"""
+        # Headers
+        markdown_text = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', markdown_text, flags=re.MULTILINE)
+        markdown_text = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', markdown_text, flags=re.MULTILINE)
+        markdown_text = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', markdown_text, flags=re.MULTILINE)
+        
+        # Bold and italic
+        markdown_text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', markdown_text)
+        markdown_text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', markdown_text)
+        
+        # Lists
+        markdown_text = re.sub(r'^- (.*?)$', r'<li>\1</li>', markdown_text, flags=re.MULTILINE)
+        markdown_text = re.sub(r'(<li>.*</li>)', r'<ul>\1</ul>', markdown_text, flags=re.DOTALL)
+        
+        # Paragraphs (simple approach)
+        lines = markdown_text.split('\n')
+        html_lines = []
+        in_paragraph = False
+        
+        for line in lines:
+            if line.strip() and not line.startswith(('<h1>', '<h2>', '<h3>', '<ul>', '<li>', '</ul>')):
+                if not in_paragraph:
+                    html_lines.append('<p>')
+                    in_paragraph = True
+                html_lines.append(line)
+            else:
+                if in_paragraph:
+                    html_lines.append('</p>')
+                    in_paragraph = False
+                html_lines.append(line)
+        
+        if in_paragraph:
+            html_lines.append('</p>')
+        
+        return '\n'.join(html_lines)
+    
+    def export_report(self, html_content: str, output_path: str, format_type: str = 'html'):
+        """Export report in various formats"""
+        try:
+            if format_type == 'html':
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+            elif format_type == 'txt':
+                # Extract text content from HTML for simple text export
+                text_content = re.sub('<[^<]+?>', '', html_content)  # Remove HTML tags
+                text_content = re.sub(r'\n\s*\n', '\n\n', text_content)  # Clean up whitespace
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write("ENTERPRISE INNOVATION IMPACT REPORT\n")
+                    f.write("=" * 50 + "\n\n")
+                    f.write(text_content)
+            return True
+        except Exception as e:
+            raise Exception(f"Report export failed: {str(e)}")
+
+class AIProvider:
+    """Unified interface for multiple AI providers"""
+    
+    def __init__(self):
+        self.providers = {
+            "gemini-pro": {"name": "Gemini Pro", "type": "google"},
+            "gemini-flash": {"name": "Gemini Flash", "type": "google"},
+            "gpt-4": {"name": "GPT-4", "type": "openai"},
+            "gpt-3.5-turbo": {"name": "GPT-3.5 Turbo", "type": "openai"},
+            "copilot": {"name": "Copilot", "type": "openai"}
+        }
+        
+        # Initialize clients
+        self.google_client = None
+        self.openai_client = None
+        self.available_models = []
+        
+    def configure_google(self, api_key: str):
+        """Configure Google Gemini and discover available models"""
+        genai.configure(api_key=api_key)
+        self.google_client = genai
+        self.discover_google_models()
+        
+    def discover_google_models(self):
+        """Discover available Google models"""
+        if not self.google_client:
+            return
+            
+        try:
+            models = self.google_client.list_models()
+            self.available_models = [model.name for model in models]
+            print("Available Google models:", self.available_models)
+            
+            # Update providers based on available models
+            available_providers = {}
+            
+            # Map common model patterns to our provider keys
+            model_mappings = {
+                "gemini-2.5-flash": ["models/gemini-2.5-flash", "gemini-2.5-flash"],
+                "gemini-2.5-pro": ["models/gemini-2.5-pro", "gemini-2.5-pro"],
+                "gemini-2.0-flash": ["models/gemini-2.0-flash", "gemini-2.0-flash"],
+                "gemini-pro": ["models/gemini-pro-latest", "gemini-pro-latest"],
+                "gemini-flash": ["models/gemini-flash-latest", "gemini-flash-latest"]
+            }
+            
+            for provider_key, patterns in model_mappings.items():
+                for pattern in patterns:
+                    if any(pattern in model for model in self.available_models):
+                        available_providers[provider_key] = {
+                            "name": provider_key.replace("-", " ").title(),
+                            "type": "google",
+                            "actual_name": pattern
+                        }
+                        break
+            
+            # If we found specific models, update the providers
+            if available_providers:
+                self.providers.update(available_providers)
+            else:
+                # Fallback: use the first available gemini model
+                gemini_models = [model for model in self.available_models if 'gemini' in model and 'flash' in model]
+                if gemini_models:
+                    first_model = gemini_models[0]
+                    available_providers["available-gemini"] = {
+                        "name": "Available Gemini",
+                        "type": "google", 
+                        "actual_name": first_model
+                    }
+                    self.providers.update(available_providers)
+            
+            print("Updated providers:", list(self.providers.keys()))
+            
+        except Exception as e:
+            print(f"Error discovering models: {e}")
+            # Fallback to basic models
+            self.providers.update({
+                "gemini-pro": {"name": "Gemini Pro", "type": "google", "actual_name": "gemini-pro"},
+                "gemini-flash": {"name": "Gemini Flash", "type": "google", "actual_name": "gemini-flash"}
+            })
+        
+    def configure_openai(self, api_key: str, base_url: str = None):
+        """Configure OpenAI/Copilot"""
+        self.openai_client = OpenAI(api_key=api_key, base_url=base_url)
+    
+    def estimate_tokens(self, text: str, model: str) -> int:
+        """Estimate token count for a given model"""
+        try:
+            if "gpt" in model:
+                encoding = tiktoken.encoding_for_model(model)
+                return len(encoding.encode(text))
+            else:
+                # Rough estimate for Gemini (1 token ≈ 4 characters)
+                return len(text) // 4
+        except:
+            return len(text) // 4  # Fallback estimation
+    
+    def analyze_innovation_impact(self, provider: str, innovation_text: str, archimate_data: Dict, 
+                                max_tokens: int = 4000) -> Dict:
+        """Analyze innovation impact using selected AI provider"""
+        
+        # Prepare the input data
+        input_data = {
+            "innovation_description": innovation_text,
+            "archimate_model": archimate_data,
+            "analysis_instructions": """
+            Analyze the potential impact of this innovation on the enterprise architecture.
+            Consider:
+            - Alignment with strategic goals and principles
+            - Impact on business processes and capabilities
+            - Potential benefits and risks
+            - Implementation considerations
+            
+            Focus on quantitative impact scoring and specific architectural elements affected.
+            """
+        }
+        
+        input_json = json.dumps(input_data, indent=2)
+        estimated_tokens = self.estimate_tokens(input_json, provider)
+        
+        if estimated_tokens > max_tokens:
+            # Implement chunking strategy for large models
+            archimate_data = self._compress_archimate_data(archimate_data)
+            input_data["archimate_model"] = archimate_data
+            input_json = json.dumps(input_data, indent=2)
+        
+        # System prompt for consistent JSON output
+        system_prompt = """You are an enterprise architecture analyst. Analyze the innovation impact and return JSON in this exact format:
+
+{
+    "impact_summary": {
+        "overall_score": 0.0-1.0,
+        "confidence": 0.0-1.0,
+        "key_benefits": ["benefit1", "benefit2"],
+        "key_risks": ["risk1", "risk2"],
+        "estimated_timeline": "short-term/medium-term/long-term",
+        "complexity": "low/medium/high"
+    },
+    "affected_elements": [
+        {
+            "element_id": "id_from_archimate",
+            "element_name": "name",
+            "element_type": "type",
+            "impact_score": 0.0-1.0,
+            "impact_type": "positive/negative/neutral",
+            "rationale": "explanation",
+            "magnitude": "low/medium/high",
+            "distance_from_goals": 0.0-1.0  // 0=direct connection, 1=very indirect
+        }
+    ],
+    "recommendations": [
+        {
+            "action": "specific action",
+            "reason": "justification",
+            "urgency": "low/medium/high",
+            "effort": "low/medium/high"
+        }
+    ],
+    "visualization_data": {
+        "central_nodes": ["element_id1", "element_id2"],
+        "impact_flows": [
+            {"from": "innovation", "to": "element_id", "strength": 0.0-1.0}
+        ]
+    }
+}
+
+Ensure all scores are between 0-1. Be specific about which archimate elements are affected."""
+        
+        try:
+            if self.providers[provider]["type"] == "google":
+                return self._call_gemini(provider, system_prompt, input_json)
+            else:
+                return self._call_openai(provider, system_prompt, input_json)
+                
+        except Exception as e:
+            return {
+                "error": str(e),
+                "impact_summary": {
+                    "overall_score": 0.0,
+                    "confidence": 0.0,
+                    "key_benefits": [],
+                    "key_risks": ["AI analysis failed: " + str(e)],
+                    "estimated_timeline": "unknown",
+                    "complexity": "unknown"
+                },
+                "affected_elements": [],
+                "recommendations": [],
+                "visualization_data": {"central_nodes": [], "impact_flows": []}
+            }
+    
+    def _compress_archimate_data(self, archimate_data: Dict) -> Dict:
+        """Compress archimate data to reduce token usage"""
+        compressed = {
+            "motivation_elements": [],
+            "business_elements": [],
+            "relationships": []
+        }
+        
+        # Keep only essential fields
+        for elem in archimate_data.get("motivation_elements", [])[:50]:  # Limit elements
+            compressed["motivation_elements"].append({
+                "id": elem.get("id"),
+                "type": elem.get("type"),
+                "name": elem.get("name"),
+                "layer": elem.get("layer")
+            })
+            
+        for elem in archimate_data.get("business_elements", [])[:50]:
+            compressed["business_elements"].append({
+                "id": elem.get("id"),
+                "type": elem.get("type"), 
+                "name": elem.get("name"),
+                "layer": elem.get("layer")
+            })
+            
+        compressed["relationships"] = archimate_data.get("relationships", [])[:100]
+        
+        return compressed
+    
+    def _call_gemini(self, model: str, system_prompt: str, input_data: str) -> Dict:
+        """Call Google Gemini API"""
+        if not self.google_client:
+            raise ValueError("Google API not configured")
+        
+        # Get the actual model name from provider config
+        provider_config = self.providers.get(model, {})
+        actual_model = provider_config.get("actual_name", model)
+        
+        print(f"Attempting to use model: {actual_model}")
+        
+        try:
+            # Try to use the model directly
+            model_obj = self.google_client.GenerativeModel(actual_model)
+        except Exception as e:
+            print(f"Model {actual_model} failed, trying fallbacks...")
+            # Try common fallback models
+            fallback_models = [
+                "gemini-pro",
+                "gemini-flash",
+                "models/gemini-pro-latest",
+                "models/gemini-flash-latest"
+            ]
+            
+            for fallback in fallback_models:
+                try:
+                    print(f"Trying fallback: {fallback}")
+                    model_obj = self.google_client.GenerativeModel(fallback)
+                    actual_model = fallback
+                    break
+                except:
+                    continue
+            else:
+                # If all fallbacks fail, try the first available model
+                gemini_models = [m for m in self.available_models if 'gemini' in m and 'flash' in m]
+                if gemini_models:
+                    actual_model = gemini_models[0]
+                    model_obj = self.google_client.GenerativeModel(actual_model)
+                else:
+                    raise e
+        
+        prompt = f"{system_prompt}\n\nInput Data:\n{input_data}\n\nJSON Response:"
+        
+        try:
+            response = model_obj.generate_content(prompt)
+            response_text = response.text
+            
+            # Extract JSON from response
+            try:
+                # Find JSON in response
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                if start_idx >= 0 and end_idx > start_idx:
+                    json_str = response_text[start_idx:end_idx]
+                    result = json.loads(json_str)
+                    result["_model_used"] = actual_model  # Add debug info
+                    return result
+                else:
+                    # If no JSON found, try to parse entire response
+                    result = json.loads(response_text)
+                    result["_model_used"] = actual_model
+                    return result
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, create a structured response from text
+                result = self._parse_unstructured_response(response_text)
+                result["_model_used"] = actual_model
+                result["_raw_response"] = response_text
+                return result
+                
+        except Exception as e:
+            raise Exception(f"Gemini API call failed with model {actual_model}: {str(e)}")
+    
+    def _parse_unstructured_response(self, response_text: str) -> Dict:
+        """Parse unstructured AI response into structured format"""
+        # This is a fallback when the AI doesn't return proper JSON
+        return {
+            "impact_summary": {
+                "overall_score": 0.7,
+                "confidence": 0.8,
+                "key_benefits": ["AI provided unstructured response - check raw output"],
+                "key_risks": ["Response format issue"],
+                "estimated_timeline": "medium-term",
+                "complexity": "medium"
+            },
+            "affected_elements": [
+                {
+                    "element_id": "fallback",
+                    "element_name": "Check Raw AI Response",
+                    "element_type": "Note",
+                    "impact_score": 0.5,
+                    "impact_type": "neutral",
+                    "rationale": "AI returned unstructured response",
+                    "magnitude": "medium",
+                    "distance_from_goals": 0.5
+                }
+            ],
+            "recommendations": [
+                {
+                    "action": "Check the raw AI response for detailed analysis",
+                    "reason": "AI returned unstructured output",
+                    "urgency": "medium",
+                    "effort": "low"
+                }
+            ],
+            "visualization_data": {
+                "central_nodes": ["fallback"],
+                "impact_flows": [
+                    {"from": "innovation", "to": "fallback", "strength": 0.5}
+                ]
+            },
+            "raw_response": response_text  # Include the original response for debugging
+        }
+    
+    def _call_openai(self, model: str, system_prompt: str, input_data: str) -> Dict:
+        """Call OpenAI API"""
+        if not self.openai_client:
+            raise ValueError("OpenAI API not configured")
+            
+        # For Copilot, use appropriate model
+        if model == "copilot":
+            model = "gpt-4"  # Fallback for copilot
+            
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": input_data}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            result["_model_used"] = model
+            return result
+        except Exception as e:
+            raise Exception(f"OpenAI API call failed: {str(e)}")
+
+class InnovationImpactAnalyzer:
+    """Main application for innovation impact analysis"""
+    
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Innovation Impact Analyzer - Enterprise Architecture AI")
+        self.root.geometry("1400x900")
+        
+        # Initialize core components
+        self.model = GraphMLArchimateModel()
+        self.analyzer = ArchimateAnalyzer(self.model)
+        self.ai_provider = AIProvider()
+        self.report_generator = ReportGenerator(self.ai_provider)
+        
+        # Analysis results
+        self.current_analysis = None
+        self.archimate_data = None
+        self.raw_ai_response = None
+        self.executive_report = None
+        
+        # UI configuration
+        self.setup_gui()
+        
+    def setup_gui(self):
+        """Setup the main interface"""
+        # Main notebook for tabs
+        notebook = ttk.Notebook(self.root)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Create tabs
+        self.analysis_tab = ttk.Frame(notebook)
+        self.results_tab = ttk.Frame(notebook)
+        self.settings_tab = ttk.Frame(notebook)
+        self.report_tab = ttk.Frame(notebook)
+        
+        notebook.add(self.analysis_tab, text="🎯 Analysis")
+        notebook.add(self.results_tab, text="📊 Results") 
+        notebook.add(self.report_tab, text="📄 Executive Report")
+        notebook.add(self.settings_tab, text="⚙️ Settings")
+        
+        self.setup_analysis_tab()
+        self.setup_results_tab()
+        self.setup_report_tab()
+        self.setup_settings_tab()
+        
+    def setup_analysis_tab(self):
+        """Setup analysis tab with model loading and innovation input"""
+        # Left panel - Model management
+        left_frame = tk.Frame(self.analysis_tab)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Model loading section
+        model_frame = tk.LabelFrame(left_frame, text="Archimate Model", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        model_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Button(model_frame, text="📁 Load Archimate XML", command=self.load_model,
+                 font=('Arial', 10), bg='#2c3e50', fg='white').pack(fill=tk.X, pady=5)
+        
+        self.model_status = tk.Label(model_frame, text="No model loaded", font=('Arial', 9), fg='gray')
+        self.model_status.pack(fill=tk.X)
+        
+        # Model statistics
+        stats_frame = tk.Frame(model_frame)
+        stats_frame.pack(fill=tk.X, pady=5)
+        
+        self.stats_text = tk.Text(stats_frame, height=6, font=('Arial', 8), wrap=tk.WORD)
+        self.stats_text.pack(fill=tk.X)
+        self.stats_text.insert(tk.END, "Load a model to see statistics...")
+        self.stats_text.config(state=tk.DISABLED)
+        
+        # AI Configuration
+        ai_frame = tk.LabelFrame(left_frame, text="AI Analysis Setup", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        ai_frame.pack(fill=tk.X, pady=5)
+        
+        # Provider selection
+        tk.Label(ai_frame, text="AI Provider:", font=('Arial', 10)).pack(anchor=tk.W)
+        self.provider_var = tk.StringVar(value="gemini-flash")
+        self.provider_combo = ttk.Combobox(ai_frame, textvariable=self.provider_var,
+                                          values=list(self.ai_provider.providers.keys()),
+                                          state="readonly")
+        self.provider_combo.pack(fill=tk.X, pady=5)
+        
+        # Available models info
+        self.models_info = tk.Label(ai_frame, text="Available models: Not configured", 
+                                   font=('Arial', 8), fg='green', wraplength=300)
+        self.models_info.pack(anchor=tk.W, pady=2)
+        
+        # Token estimation
+        self.token_label = tk.Label(ai_frame, text="Estimated tokens: 0", font=('Arial', 9), fg='blue')
+        self.token_label.pack(anchor=tk.W)
+        
+        # Right panel - Innovation input
+        right_frame = tk.Frame(self.analysis_tab)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Innovation description
+        input_frame = tk.LabelFrame(right_frame, text="Innovation Description", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        input_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        tk.Label(input_frame, text="Describe your innovation or idea:", font=('Arial', 10)).pack(anchor=tk.W)
+        
+        self.innovation_text = scrolledtext.ScrolledText(input_frame, height=12, font=('Arial', 10), wrap=tk.WORD)
+        self.innovation_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Example text
+        example_text = """Example: "Implement AI-powered customer service chatbot that can handle 80% of routine inquiries automatically."
+
+The AI will analyze how this innovation impacts your enterprise architecture goals, processes, and capabilities."""
+        self.innovation_text.insert(tk.END, example_text)
+        
+        # Action buttons in a horizontal layout
+        button_frame = tk.Frame(right_frame)
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        # Submit to AI button
+        submit_btn = tk.Button(button_frame, text="🤖 Submit to AI", command=self.submit_to_ai,
+                              font=('Arial', 11, 'bold'), bg='#3498db', fg='white', height=2)
+        submit_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        # Analyze button (initially disabled)
+        self.analyze_btn = tk.Button(button_frame, text="📊 Analyze Results", command=self.analyze_results,
+                                    font=('Arial', 11, 'bold'), bg='#27ae60', fg='white', height=2,
+                                    state=tk.DISABLED)
+        self.analyze_btn.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # Progress indicator
+        self.progress = ttk.Progressbar(right_frame, mode='indeterminate')
+        self.progress.pack(fill=tk.X, pady=5)
+        
+        self.status_label = tk.Label(right_frame, text="Ready for analysis", font=('Arial', 9), fg='gray')
+        self.status_label.pack(fill=tk.X)
+        
+        # Raw AI response display (initially hidden)
+        self.raw_response_frame = tk.LabelFrame(right_frame, text="Raw AI Response", font=('Arial', 11, 'bold'), padx=10, pady=10)
+        
+        self.raw_response_text = scrolledtext.ScrolledText(self.raw_response_frame, height=8, font=('Consolas', 8), wrap=tk.WORD)
+        self.raw_response_text.pack(fill=tk.BOTH, expand=True)
+        self.raw_response_text.insert(tk.END, "AI response will appear here after submission...")
+    
+    def setup_results_tab(self):
+        """Setup results tab with impact visualization"""
+        # Results display
+        results_frame = tk.Frame(self.results_tab)
+        results_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Impact summary
+        summary_frame = tk.LabelFrame(results_frame, text="Impact Summary", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        summary_frame.pack(fill=tk.X, pady=5)
+        
+        self.summary_text = scrolledtext.ScrolledText(summary_frame, height=8, font=('Arial', 9), wrap=tk.WORD)
+        self.summary_text.pack(fill=tk.BOTH, expand=True)
+        self.summary_text.insert(tk.END, "Run an analysis to see results...")
+        self.summary_text.config(state=tk.DISABLED)
+        
+        # Visualization controls
+        viz_control_frame = tk.Frame(results_frame)
+        viz_control_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Button(viz_control_frame, text="🕸️ Generate Impact Network", command=self.generate_network,
+                 font=('Arial', 10), bg='#3498db', fg='white').pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(viz_control_frame, text="📈 Show Impact Chart", command=self.show_impact_chart,
+                 font=('Arial', 10), bg='#9b59b6', fg='white').pack(side=tk.LEFT, padx=5)
+        
+        # Detailed results
+        detail_frame = tk.LabelFrame(results_frame, text="Detailed Analysis", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        detail_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Notebook for detailed views
+        detail_notebook = ttk.Notebook(detail_frame)
+        detail_notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Affected elements tab
+        elements_tab = ttk.Frame(detail_notebook)
+        detail_notebook.add(elements_tab, text="Affected Elements")
+        
+        self.elements_text = scrolledtext.ScrolledText(elements_tab, font=('Consolas', 9), wrap=tk.WORD)
+        self.elements_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Recommendations tab
+        rec_tab = ttk.Frame(detail_notebook)
+        detail_notebook.add(rec_tab, text="Recommendations")
+        
+        self.rec_text = scrolledtext.ScrolledText(rec_tab, font=('Consolas', 9), wrap=tk.WORD)
+        self.rec_text.pack(fill=tk.BOTH, expand=True)
+    
+    def setup_report_tab(self):
+        """Setup executive report tab"""
+        report_frame = tk.Frame(self.report_tab)
+        report_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Report controls
+        control_frame = tk.Frame(report_frame)
+        control_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Button(control_frame, text="📋 Generate Executive Report", command=self.generate_report,
+                 font=('Arial', 12, 'bold'), bg='#e74c3c', fg='white', height=2).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(control_frame, text="💾 Export as HTML", command=lambda: self.export_report('html'),
+                 font=('Arial', 10), bg='#3498db', fg='white').pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(control_frame, text="📝 Export as Text", command=lambda: self.export_report('txt'),
+                 font=('Arial', 10), bg='#27ae60', fg='white').pack(side=tk.LEFT, padx=5)
+        
+        # Report display
+        report_display_frame = tk.LabelFrame(report_frame, text="Executive Report", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        report_display_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.report_text = scrolledtext.ScrolledText(report_display_frame, font=('Arial', 10), wrap=tk.WORD)
+        self.report_text.pack(fill=tk.BOTH, expand=True)
+        self.report_text.insert(tk.END, "Generate an executive report to see the formatted analysis here...")
+        self.report_text.config(state=tk.DISABLED)
+    
+    def setup_settings_tab(self):
+        """Setup settings tab for API configuration"""
+        settings_frame = tk.Frame(self.settings_tab)
+        settings_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Google API configuration
+        google_frame = tk.LabelFrame(settings_frame, text="Google Gemini API", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        google_frame.pack(fill=tk.X, pady=10)
+        
+        tk.Label(google_frame, text="API Key:", font=('Arial', 10)).pack(anchor=tk.W)
+        self.google_key = tk.Entry(google_frame, show="*", font=('Arial', 10))
+        self.google_key.pack(fill=tk.X, pady=5)
+        
+        tk.Button(google_frame, text="Test Connection", command=self.test_google,
+                 font=('Arial', 9), bg='#f39c12', fg='white').pack(anchor=tk.W, pady=5)
+        
+        tk.Button(google_frame, text="Discover Models", command=self.discover_models,
+                 font=('Arial', 9), bg='#3498db', fg='white').pack(anchor=tk.W, pady=5)
+        
+        # OpenAI API configuration
+        openai_frame = tk.LabelFrame(settings_frame, text="OpenAI/Copilot API", font=('Arial', 12, 'bold'), padx=10, pady=10)
+        openai_frame.pack(fill=tk.X, pady=10)
+        
+        tk.Label(openai_frame, text="API Key:", font=('Arial', 10)).pack(anchor=tk.W)
+        self.openai_key = tk.Entry(openai_frame, show="*", font=('Arial', 10))
+        self.openai_key.pack(fill=tk.X, pady=5)
+        
+        tk.Label(openai_frame, text="Base URL (optional):", font=('Arial', 10)).pack(anchor=tk.W)
+        self.openai_url = tk.Entry(openai_frame, font=('Arial', 10))
+        self.openai_url.pack(fill=tk.X, pady=5)
+        
+        tk.Button(openai_frame, text="Test Connection", command=self.test_openai,
+                 font=('Arial', 9), bg='#f39c12', fg='white').pack(anchor=tk.W)
+        
+        # Load any saved settings
+        self.load_settings()
+    
+    def discover_models(self):
+        """Discover available Google models"""
+        api_key = self.google_key.get().strip()
+        if not api_key:
+            messagebox.showwarning("Warning", "Please enter Google API key first!")
+            return
+        
+        try:
+            self.ai_provider.configure_google(api_key)
+            available_models = self.ai_provider.available_models
+            
+            if available_models:
+                # Filter for text generation models (not embeddings, images, etc.)
+                text_models = [model for model in available_models if any(x in model for x in ['gemini', 'gemma'])]
+                
+                if text_models:
+                    models_text = f"Available models: {', '.join(text_models[:3])}"
+                    if len(text_models) > 3:
+                        models_text += f" ... and {len(text_models) - 3} more"
+                    self.models_info.config(text=models_text)
+                    
+                    # Update provider dropdown with available text models
+                    current_providers = list(self.ai_provider.providers.keys())
+                    self.provider_combo['values'] = current_providers
+                    
+                    messagebox.showinfo("Success", f"Discovered {len(text_models)} available text generation models!")
+                else:
+                    self.models_info.config(text="No text generation models found")
+                    messagebox.showwarning("Warning", "No text generation models discovered.")
+            else:
+                self.models_info.config(text="No models discovered - check API key")
+                messagebox.showwarning("Warning", "No models discovered. Please check your API key.")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to discover models: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def load_model(self):
+        """Load Archimate XML model"""
+        file_path = filedialog.askopenfilename(
+            title="Select Archimate XML File",
+            filetypes=[("XML files", "*.xml"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                self.model_status.config(text="Loading model...")
+                self.root.update()
+                
+                success = self.model.load_archimate_xml(Path(file_path))
+                if success:
+                    self.model_status.config(text=f"Loaded: {self.model.name}")
+                    self.prepare_archimate_data()
+                    self.update_model_stats()
+                    self.estimate_token_usage()
+                else:
+                    messagebox.showerror("Error", "Failed to load model!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error loading model: {str(e)}")
+    
+    def prepare_archimate_data(self):
+        """Prepare Archimate data for AI analysis"""
+        if not self.model.graph.nodes():
+            return
+        
+        self.archimate_data = {
+            "motivation_elements": [],
+            "business_elements": [],
+            "relationships": []
+        }
+        
+        # Extract motivation layer elements
+        for node_id, data in self.model.graph.nodes(data=True):
+            layer = data.get('layer', '').lower()
+            elem_type = data.get('type', '')
+            
+            element_data = {
+                "id": node_id,
+                "type": elem_type,
+                "name": data.get('name', 'Unnamed'),
+                "layer": data.get('layer', 'Unknown'),
+                "properties": data
+            }
+            
+            if 'motivation' in layer or 'strategy' in layer:
+                self.archimate_data["motivation_elements"].append(element_data)
+            elif 'business' in layer:
+                self.archimate_data["business_elements"].append(element_data)
+        
+        # Extract relationships
+        for u, v, data in self.model.graph.edges(data=True):
+            self.archimate_data["relationships"].append({
+                "source": u,
+                "target": v,
+                "type": data.get('relationship_type', 'association'),
+                "properties": data
+            })
+    
+    def update_model_stats(self):
+        """Update model statistics display"""
+        if not self.model.graph.nodes():
+            return
+        
+        self.stats_text.config(state=tk.NORMAL)
+        self.stats_text.delete(1.0, tk.END)
+        
+        stats = f"Model: {self.model.name}\n"
+        stats += f"Total Elements: {len(self.model.graph.nodes())}\n"
+        stats += f"Relationships: {len(self.model.graph.edges())}\n\n"
+        
+        # Layer breakdown
+        layers = {}
+        for _, data in self.model.graph.nodes(data=True):
+            layer = data.get('layer', 'Unknown')
+            layers[layer] = layers.get(layer, 0) + 1
+        
+        stats += "Layer Distribution:\n"
+        for layer, count in layers.items():
+            stats += f"  {layer}: {count} elements\n"
+        
+        stats += f"\nMotivation Elements: {len(self.archimate_data['motivation_elements'])}"
+        stats += f"\nBusiness Elements: {len(self.archimate_data['business_elements'])}"
+        stats += f"\nRelationships: {len(self.archimate_data['relationships'])}"
+        
+        self.stats_text.insert(tk.END, stats)
+        self.stats_text.config(state=tk.DISABLED)
+    
+    def estimate_token_usage(self):
+        """Estimate token usage for current model"""
+        if not self.archimate_data:
+            return
+        
+        input_data = {
+            "innovation_description": "Sample innovation",
+            "archimate_model": self.archimate_data
+        }
+        
+        provider = self.provider_var.get()
+        estimated_tokens = self.ai_provider.estimate_tokens(json.dumps(input_data), provider)
+        
+        self.token_label.config(text=f"Estimated tokens: {estimated_tokens:,}")
+    
+    def submit_to_ai(self):
+        """Submit innovation to AI for analysis"""
+        if not self.archimate_data:
+            messagebox.showwarning("Warning", "Please load an Archimate model first!")
+            return
+        
+        innovation_text = self.innovation_text.get(1.0, tk.END).strip()
+        if not innovation_text or len(innovation_text) < 10:
+            messagebox.showwarning("Warning", "Please provide a detailed innovation description!")
+            return
+        
+        # Check API configuration
+        provider = self.provider_var.get()
+        if provider.startswith('gemini') and not self.ai_provider.google_client:
+            messagebox.showwarning("Warning", "Please configure Google API key in Settings!")
+            return
+        elif provider.startswith('gpt') and not self.ai_provider.openai_client:
+            messagebox.showwarning("Warning", "Please configure OpenAI API key in Settings!")
+            return
+        
+        # Start analysis
+        self.progress.start()
+        self.status_label.config(text="Submitting to AI...")
+        self.analyze_btn.config(state=tk.DISABLED)
+        self.root.update()
+        
+        try:
+            # Run AI analysis
+            self.raw_ai_response = self.ai_provider.analyze_innovation_impact(
+                provider, innovation_text, self.archimate_data
+            )
+            
+            # Show raw response
+            self.show_raw_response()
+            
+            # Enable analyze button
+            self.analyze_btn.config(state=tk.NORMAL)
+            self.status_label.config(text="AI response received! Click 'Analyze Results' to process.")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"AI submission failed: {str(e)}")
+            self.status_label.config(text="AI submission failed")
+            self.analyze_btn.config(state=tk.DISABLED)
+        finally:
+            self.progress.stop()
+    
+    def show_raw_response(self):
+        """Display raw AI response"""
+        if not self.raw_ai_response:
+            return
+        
+        # Show the raw response frame
+        self.raw_response_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Update raw response text
+        self.raw_response_text.delete(1.0, tk.END)
+        self.raw_response_text.insert(tk.END, json.dumps(self.raw_ai_response, indent=2))
+    
+    def analyze_results(self):
+        """Process the AI response and display formatted results"""
+        if not self.raw_ai_response:
+            messagebox.showwarning("Warning", "Please submit to AI first!")
+            return
+        
+        try:
+            self.current_analysis = self.raw_ai_response
+            
+            # Display results
+            self.display_results()
+            
+            # Switch to results tab
+            notebook = self.root.winfo_children()[0]  # Get the notebook
+            notebook.select(1)  # Switch to results tab (index 1)
+            
+            self.status_label.config(text="Results analyzed and displayed!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to analyze results: {str(e)}")
+    
+    def display_results(self):
+        """Display analysis results"""
+        if not self.current_analysis:
+            return
+        
+        # Update summary
+        self.summary_text.config(state=tk.NORMAL)
+        self.summary_text.delete(1.0, tk.END)
+        
+        summary = self.current_analysis.get('impact_summary', {})
+        
+        # Show which model was actually used
+        model_used = self.current_analysis.get('_model_used', 'Unknown')
+        self.summary_text.insert(tk.END, f"Model Used: {model_used}\n")
+        self.summary_text.insert(tk.END, f"Overall Impact Score: {summary.get('overall_score', 0):.2f}/1.0\n")
+        self.summary_text.insert(tk.END, f"Confidence: {summary.get('confidence', 0):.1%}\n")
+        self.summary_text.insert(tk.END, f"Timeline: {summary.get('estimated_timeline', 'Unknown')}\n")
+        self.summary_text.insert(tk.END, f"Complexity: {summary.get('complexity', 'Unknown')}\n\n")
+        
+        self.summary_text.insert(tk.END, "Key Benefits:\n")
+        for benefit in summary.get('key_benefits', []):
+            self.summary_text.insert(tk.END, f"• {benefit}\n")
+        
+        self.summary_text.insert(tk.END, "\nKey Risks:\n")
+        for risk in summary.get('key_risks', []):
+            self.summary_text.insert(tk.END, f"• {risk}\n")
+        
+        self.summary_text.config(state=tk.DISABLED)
+        
+        # Update affected elements
+        self.elements_text.delete(1.0, tk.END)
+        elements = self.current_analysis.get('affected_elements', [])
+        for elem in elements:
+            self.elements_text.insert(tk.END, 
+                f"📊 {elem.get('element_name', 'Unknown')} ({elem.get('element_type', 'Unknown')})\n"
+                f"   Impact: {elem.get('impact_score', 0):.2f} ({elem.get('impact_type', 'unknown')})\n"
+                f"   Magnitude: {elem.get('magnitude', 'unknown')}\n"
+                f"   Distance from Goals: {elem.get('distance_from_goals', 0):.2f}\n"
+                f"   Rationale: {elem.get('rationale', 'No rationale provided')}\n\n"
+            )
+        
+        # Update recommendations
+        self.rec_text.delete(1.0, tk.END)
+        recommendations = self.current_analysis.get('recommendations', [])
+        for rec in recommendations:
+            self.rec_text.insert(tk.END,
+                f"✅ {rec.get('action', 'Unknown action')}\n"
+                f"   Urgency: {rec.get('urgency', 'unknown')} | Effort: {rec.get('effort', 'unknown')}\n"
+                f"   Reason: {rec.get('reason', 'No reason provided')}\n\n"
+            )
+    
+    def generate_report(self):
+        """Generate executive report"""
+        if not self.current_analysis:
+            messagebox.showwarning("Warning", "Please run an analysis first!")
+            return
+        
+        try:
+            self.progress.start()
+            self.status_label.config(text="Generating executive report...")
+            self.root.update()
+            
+            innovation_text = self.innovation_text.get(1.0, tk.END).strip()
+            provider = self.provider_var.get()
+            model_name = self.model.name if hasattr(self.model, 'name') else "Unknown Model"
+            
+            # Generate the report
+            markdown_report = self.report_generator.generate_executive_report(
+                self.current_analysis, innovation_text, model_name, provider
+            )
+            
+            # Convert to HTML with embedded network
+            report_data = {
+                "innovation_description": innovation_text,
+                "model_name": model_name,
+                "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "impact_summary": self.current_analysis.get('impact_summary', {}),
+                "affected_elements": self.current_analysis.get('affected_elements', []),
+                "recommendations": self.current_analysis.get('recommendations', []),
+                "model_used": self.current_analysis.get('_model_used', 'Unknown')
+            }
+            
+            html_report = self.report_generator.render_html_report(
+                markdown_report, report_data, self.current_analysis, innovation_text
+            )
+            self.executive_report = html_report
+            
+            # Display in report tab
+            self.report_text.config(state=tk.NORMAL)
+            self.report_text.delete(1.0, tk.END)
+            self.report_text.insert(tk.END, markdown_report)
+            self.report_text.config(state=tk.DISABLED)
+            
+            # Switch to report tab
+            notebook = self.root.winfo_children()[0]
+            notebook.select(2)  # Switch to report tab
+            
+            self.status_label.config(text="Executive report generated successfully!")
+            messagebox.showinfo("Success", "Executive report generated! Use Export buttons to save in different formats.")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Report generation failed: {str(e)}")
+            self.status_label.config(text="Report generation failed")
+        finally:
+            self.progress.stop()
+    
+    def export_report(self, format_type: str):
+        """Export the executive report"""
+        if not self.executive_report:
+            messagebox.showwarning("Warning", "Please generate a report first!")
+            return
+        
+        try:
+            if format_type == 'html':
+                file_path = filedialog.asksaveasfilename(
+                    title="Export HTML Report",
+                    defaultextension=".html",
+                    filetypes=[("HTML files", "*.html")]
+                )
+            else:  # txt
+                file_path = filedialog.asksaveasfilename(
+                    title="Export Text Report", 
+                    defaultextension=".txt",
+                    filetypes=[("Text files", "*.txt")]
+                )
+            
+            if file_path:
+                self.report_generator.export_report(self.executive_report, file_path, format_type)
+                messagebox.showinfo("Success", f"Report exported successfully to:\n{file_path}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Export failed: {str(e)}")
+    
+    def generate_network(self):
+        """Generate Pyvis network visualization"""
+        if not self.current_analysis:
+            messagebox.showwarning("Warning", "Please run an analysis first!")
+            return
+        
+        try:
+            # Create network
+            net = Network(height="600px", width="100%", bgcolor="#ffffff", font_color="black")
+            
+            # Add innovation node
+            net.add_node("innovation", label="Innovation", color="#e74c3c", 
+                        size=30, shape="diamond", font={"size": 20})
+            
+            # Add affected elements
+            elements = self.current_analysis.get('affected_elements', [])
+            for elem in elements:
+                elem_id = elem.get('element_id')
+                elem_name = elem.get('element_name', 'Unknown')
+                impact_score = elem.get('impact_score', 0)
+                impact_type = elem.get('impact_type', 'neutral')
+                
+                # Determine color based on impact
+                if impact_type == 'positive':
+                    color = '#2ecc71'  # Green
+                elif impact_type == 'negative':
+                    color = '#e74c3c'  # Red
+                else:
+                    color = '#f39c12'  # Orange
+                
+                # Size based on impact score
+                size = 20 + (impact_score * 30)
+                
+                net.add_node(elem_id, label=elem_name, color=color, 
+                           size=size, title=f"Impact: {impact_score:.2f}")
+                
+                # Add connection from innovation
+                net.add_edge("innovation", elem_id, value=impact_score * 10,
+                           color=color, title=f"Impact: {impact_score:.2f}")
+            
+            # Add relationships between elements if they exist in the model
+            viz_data = self.current_analysis.get('visualization_data', {})
+            for flow in viz_data.get('impact_flows', []):
+                if flow['from'] != 'innovation' and flow['to'] != 'innovation':
+                    net.add_edge(flow['from'], flow['to'], value=flow.get('strength', 0.5) * 5,
+                               color='#95a5a6', dashes=True)
+            
+            # Generate HTML
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+                net.save_graph(f.name)
+                webbrowser.open(f'file://{f.name}')
+                
+            messagebox.showinfo("Success", "Impact network generated and opened in browser!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate network: {str(e)}")
+    
+    def show_impact_chart(self):
+        """Show impact chart using matplotlib"""
+        if not self.current_analysis:
+            messagebox.showwarning("Warning", "Please run an analysis first!")
+            return
+        
+        try:
+            import matplotlib.pyplot as plt
+            import numpy as np
+            
+            elements = self.current_analysis.get('affected_elements', [])
+            if not elements:
+                messagebox.showinfo("Info", "No affected elements to display")
+                return
+            
+            # Prepare data
+            names = [elem.get('element_name', 'Unknown')[:20] for elem in elements]
+            scores = [elem.get('impact_score', 0) for elem in elements]
+            colors = ['#2ecc71' if elem.get('impact_type') == 'positive' 
+                     else '#e74c3c' if elem.get('impact_type') == 'negative' 
+                     else '#f39c12' for elem in elements]
+            
+            # Create chart
+            plt.figure(figsize=(12, 8))
+            y_pos = np.arange(len(names))
+            
+            plt.barh(y_pos, scores, color=colors, alpha=0.7)
+            plt.yticks(y_pos, names)
+            plt.xlabel('Impact Score')
+            plt.title('Innovation Impact on Architecture Elements')
+            plt.grid(axis='x', alpha=0.3)
+            
+            # Add value labels
+            for i, v in enumerate(scores):
+                plt.text(v + 0.01, i, f'{v:.2f}', va='center')
+            
+            plt.tight_layout()
+            plt.show()
+            
+        except ImportError:
+            messagebox.showerror("Error", "Matplotlib not available for charts")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create chart: {str(e)}")
+    
+    def test_google(self):
+        """Test Google API connection"""
+        api_key = self.google_key.get().strip()
+        if not api_key:
+            messagebox.showwarning("Warning", "Please enter Google API key")
+            return
+        
+        try:
+            self.ai_provider.configure_google(api_key)
+            messagebox.showinfo("Success", "Google API configured successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Google API configuration failed: {str(e)}")
+    
+    def test_openai(self):
+        """Test OpenAI API connection"""
+        api_key = self.openai_key.get().strip()
+        base_url = self.openai_url.get().strip() or None
+        
+        if not api_key:
+            messagebox.showwarning("Warning", "Please enter OpenAI API key")
+            return
+        
+        try:
+            self.ai_provider.configure_openai(api_key, base_url)
+            messagebox.showinfo("Success", "OpenAI API configured successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"OpenAI API configuration failed: {str(e)}")
+    
+    def load_settings(self):
+        """Load saved settings"""
+        try:
+            if os.path.exists('ai_settings.json'):
+                with open('ai_settings.json', 'r') as f:
+                    settings = json.load(f)
+                
+                self.google_key.insert(0, settings.get('google_key', ''))
+                self.openai_key.insert(0, settings.get('openai_key', ''))
+                self.openai_url.insert(0, settings.get('openai_url', ''))
+        except:
+            pass  # Ignore settings loading errors
+    
+    def save_settings(self):
+        """Save settings (call this on exit)"""
+        try:
+            settings = {
+                'google_key': self.google_key.get(),
+                'openai_key': self.openai_key.get(), 
+                'openai_url': self.openai_url.get()
+            }
+            with open('ai_settings.json', 'w') as f:
+                json.dump(settings, f)
+        except:
+            pass  # Ignore settings saving errors
+
+
+def main():
+    """Main application entry point"""
+    root = tk.Tk()
+    
+    # Configure styles
+    style = ttk.Style()
+    style.theme_use('clam')
+    
+    # Create and run application
+    app = InnovationImpactAnalyzer(root)
+    
+    # Handle application close
+    def on_closing():
+        app.save_settings()
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
